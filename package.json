@@ -17,5 +17,10 @@
     "mobile-scanner"
   ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "mammoth": "^1.13.0",
+    "pdf-lib": "^1.17.1",
+    "puppeteer-core": "^25.16.0"
+  }
 }

@@ -1,5 +1,6 @@
 import { ScannerCore } from './scanner-core.js';
 import { PdfExporter } from './pdf-exporter.js';
+import { openToolModal, closeToolModal, handleFilesSelected, executeActiveTool } from './pdf-tools.js';
 
 // Application State
 const state = {
@@ -22,7 +23,8 @@ const views = {
   home: document.getElementById('view-home'),
   crop: document.getElementById('view-crop'),
   enhance: document.getElementById('view-enhance'),
-  doc: document.getElementById('view-document')
+  doc: document.getElementById('view-document'),
+  tools: document.getElementById('view-tools')
 };
 
 const cropCanvas = document.getElementById('cropCanvas');
@@ -38,16 +40,22 @@ function showView(name) {
     views[key].classList.toggle('active', key === name);
   });
 
+  // Tampilkan navigasi bawah hanya pada tampilan beranda, alat, dan dokumen
+  const bottomNav = document.getElementById('bottomNav');
+  if (bottomNav) {
+    bottomNav.style.display = (name === 'home' || name === 'tools' || name === 'doc') ? 'flex' : 'none';
+  }
+
   // Sinkronisasi state tombol navigasi bawah
   document.querySelectorAll('.bottom-nav .nav-item').forEach(item => {
     item.classList.remove('active');
   });
   if (name === 'home') {
     document.getElementById('navBtnHome')?.classList.add('active');
-    document.getElementById('navBtnHome2')?.classList.add('active');
+  } else if (name === 'tools') {
+    document.getElementById('navBtnTools')?.classList.add('active');
   } else if (name === 'doc') {
     document.getElementById('navBtnDocs')?.classList.add('active');
-    document.getElementById('navBtnDocs2')?.classList.add('active');
   }
 }
 
@@ -677,14 +685,11 @@ document.querySelectorAll('.btn-copy').forEach(btn => {
 
 // Floating Bottom Nav Bar Listeners
 document.getElementById('navBtnHome')?.addEventListener('click', () => showView('home'));
-document.getElementById('navBtnHome2')?.addEventListener('click', () => showView('home'));
-
 document.getElementById('navBtnScan')?.addEventListener('click', () => cameraInput.click());
-document.getElementById('navBtnScan2')?.addEventListener('click', () => cameraInput.click());
-
+document.getElementById('navBtnTools')?.addEventListener('click', () => showView('tools'));
 document.getElementById('navBtnDocs')?.addEventListener('click', () => showView('doc'));
-document.getElementById('navBtnDocs2')?.addEventListener('click', () => showView('doc'));
 
+document.getElementById('btnGoToTools')?.addEventListener('click', () => showView('tools'));
 document.getElementById('btnHomeViewDoc')?.addEventListener('click', () => showView('doc'));
 
 // Top info button: scroll to network card
@@ -716,6 +721,78 @@ document.querySelectorAll('.cat-pill').forEach(pill => {
       b.classList.toggle('active', b.dataset.filter === state.filter);
     });
   });
+});
+
+// ========================================================
+// PDF Tools Hub Event Listeners
+// ========================================================
+// Tool Cards Click -> Buka Modal
+document.querySelectorAll('.tool-card').forEach(card => {
+  card.addEventListener('click', () => {
+    const toolId = card.dataset.tool;
+    if (toolId) openToolModal(toolId);
+  });
+});
+
+// Filter Kategori di Halaman Alat PDF
+document.querySelectorAll('.tool-filter-pill').forEach(pill => {
+  pill.addEventListener('click', () => {
+    document.querySelectorAll('.tool-filter-pill').forEach(p => p.classList.remove('active'));
+    pill.classList.add('active');
+    const filter = pill.dataset.filter;
+
+    document.querySelectorAll('.tool-card').forEach(card => {
+      const cat = card.dataset.category;
+      if (filter === 'all' || cat === filter) {
+        card.style.display = 'flex';
+      } else {
+        card.style.display = 'none';
+      }
+    });
+  });
+});
+
+// Modal File Selection & Dropzone
+const modalDropzone = document.getElementById('modalDropzone');
+const modalFileInput = document.getElementById('modalFileInput');
+
+modalDropzone?.addEventListener('click', () => {
+  modalFileInput.click();
+});
+
+modalFileInput?.addEventListener('change', (e) => {
+  handleFilesSelected(e.target.files);
+});
+
+// Drag and drop pada dropzone modal
+modalDropzone?.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  modalDropzone.classList.add('dragover');
+});
+
+modalDropzone?.addEventListener('dragleave', () => {
+  modalDropzone.classList.remove('dragover');
+});
+
+modalDropzone?.addEventListener('drop', (e) => {
+  e.preventDefault();
+  modalDropzone.classList.remove('dragover');
+  if (e.dataTransfer.files && e.dataTransfer.files.length) {
+    handleFilesSelected(e.dataTransfer.files);
+  }
+});
+
+// Modal Action & Close
+document.getElementById('btnModalAction')?.addEventListener('click', () => {
+  executeActiveTool();
+});
+
+document.getElementById('btnModalClose')?.addEventListener('click', () => {
+  closeToolModal();
+});
+
+document.getElementById('modalBackdrop')?.addEventListener('click', () => {
+  closeToolModal();
 });
 
 // -------------------------------------------------------------

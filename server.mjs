@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { convertWordToPdf, convertPdfToWord, convertPdfToImages, compressPdf } from './converters.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,7 +22,8 @@ const MIME_TYPES = {
   '.svg': 'image/svg+xml',
   '.webp': 'image/webp',
   '.ico': 'image/x-icon',
-  '.pdf': 'application/pdf'
+  '.pdf': 'application/pdf',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 };
 
 function getLocalIpAddresses() {
@@ -38,6 +40,109 @@ function getLocalIpAddresses() {
 }
 
 const server = http.createServer((req, res) => {
+  // CORS Preflight
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, X-Filename, X-Dpi'
+    });
+    return res.end();
+  }
+
+  // ========================================================
+  // API TOOLS ENDPOINTS (iLovePDF Suite)
+  // ========================================================
+  if (req.url.startsWith('/api/tools/') && req.method === 'POST') {
+    const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const endpoint = urlObj.pathname;
+    const chunks = [];
+    let totalSize = 0;
+    const MAX_SIZE = 50 * 1024 * 1024; // 50 MB
+
+    req.on('data', chunk => {
+      totalSize += chunk.length;
+      if (totalSize > MAX_SIZE) {
+        res.writeHead(413, {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        });
+        res.end(JSON.stringify({ error: 'Ukuran berkas melebihi batas 50MB.' }));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+
+    req.on('end', async () => {
+      const fileBuffer = Buffer.concat(chunks);
+      const origFilename = req.headers['x-filename'] || urlObj.searchParams.get('filename') || 'dokumen';
+      const baseName = path.parse(decodeURIComponent(origFilename)).name || 'dokumen';
+
+      try {
+        if (endpoint === '/api/tools/word-to-pdf') {
+          const pdfBuf = await convertWordToPdf(fileBuffer);
+          res.writeHead(200, {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="${encodeURIComponent(baseName)}.pdf"`,
+            'Content-Length': pdfBuf.length,
+            'Access-Control-Allow-Origin': '*'
+          });
+          return res.end(pdfBuf);
+        }
+
+        if (endpoint === '/api/tools/pdf-to-word') {
+          const docxBuf = await convertPdfToWord(fileBuffer);
+          res.writeHead(200, {
+            'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'Content-Disposition': `attachment; filename="${encodeURIComponent(baseName)}.docx"`,
+            'Content-Length': docxBuf.length,
+            'Access-Control-Allow-Origin': '*'
+          });
+          return res.end(docxBuf);
+        }
+
+        if (endpoint === '/api/tools/pdf-to-images') {
+          const dpi = parseInt(req.headers['x-dpi'] || urlObj.searchParams.get('dpi') || '150', 10);
+          const images = await convertPdfToImages(fileBuffer, dpi);
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          });
+          return res.end(JSON.stringify({ success: true, count: images.length, images }));
+        }
+
+        if (endpoint === '/api/tools/compress-pdf') {
+          const compressedBuf = await compressPdf(fileBuffer);
+          res.writeHead(200, {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="${encodeURIComponent(baseName)}-compressed.pdf"`,
+            'Content-Length': compressedBuf.length,
+            'Access-Control-Allow-Origin': '*'
+          });
+          return res.end(compressedBuf);
+        }
+
+        res.writeHead(404, {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        });
+        return res.end(JSON.stringify({ error: 'Endpoint alat tidak ditemukan.' }));
+      } catch (err) {
+        console.error('API Tools Error:', err);
+        res.writeHead(500, {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        });
+        return res.end(JSON.stringify({ error: err.message || 'Terjadi kesalahan pemrosesan berkas di server.' }));
+      }
+    });
+    return;
+  }
+
+  // ========================================================
+  // STATIC ASSETS SERVING
+  // ========================================================
   let reqPath = decodeURIComponent(req.url.split('?')[0]);
   if (reqPath === '/' || reqPath === '') {
     reqPath = '/index.html';
@@ -74,7 +179,7 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log('='.repeat(65));
-  console.log('📄 SNAP SCANNER — APLIKASI AUTO SCAN PDF DARI KAMERA HP');
+  console.log('📄 SNAP SCANNER & PDF TOOLS HUB — ALL-IN-ONE UTILITY');
   console.log('='.repeat(65));
   console.log(`\n💻 Akses di Laptop/PC : http://localhost:${PORT}`);
   
@@ -83,7 +188,6 @@ server.listen(PORT, '0.0.0.0', () => {
   localIps.forEach(net => {
     console.log(`   👉 http://${net.address}:${PORT} (${net.name})`);
   });
-  console.log('\n💡 Tips HP: Buka link di atas lewat Chrome/Safari di HP untuk');
-  console.log('   jepret dokumen langsung menggunakan kamera HP Anda!\n');
+  console.log('\n💡 Fitur Aktif: Auto Camera Scan, Word ↔ PDF, Merge, Split, Compress');
   console.log('='.repeat(65));
 });
