@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0a0e17">
+  <title>SnapScanner PDF — Auto Scan Dokumen ke PDF via Kamera HP</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📄</text></svg>">
+  
+  <link rel="stylesheet" href="/css/styles.css">
+  <!-- Pustaka jsPDF offline-ready -->
+  <script src="/assets/jspdf.umd.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <!-- Hidden Inputs untuk Kamera HP & Galeri File -->
+    <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display: none;">
+    <input type="file" id="fileInput" accept="image/*" style="display: none;">
+
+    <!-- ========================================================
+         VIEW 1: HOME & DASHBOARD
+         ======================================================== -->
+    <section id="view-home" class="view active">
+      <div class="home-hero">
+        <div class="hero-badge">⚡ CamScanner-Style Web Engine</div>
+        <div class="hero-icon">📄</div>
+        <h1>SnapScanner PDF</h1>
+        <p>Jepret dokumen lewat kamera HP, auto-deteksi sudut, luruskan perspektif, dan hasilkan berkas PDF A4 jernih dalam sekejap.</p>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="capture-actions">
+        <button id="btnStartCamera" class="btn-primary-capture">
+          <span>📸</span>
+          <span>Ambil Foto Dokumen (Kamera)</span>
+        </button>
+        <button id="btnStartGallery" class="btn-secondary-capture">
+          <span>🖼️</span>
+          <span>Pilih dari Galeri Foto</span>
+        </button>
+        <button id="btnStartSample" class="btn-demo-capture">
+          <span>✨</span>
+          <span>Coba Dokumen Contoh (Test Demo)</span>
+        </button>
+      </div>
+
+      <!-- Local Network Direct Connect -->
+      <div class="mobile-connect-card">
+        <h4>📱 Akses Langsung di HP Anda</h4>
+        <p>Buka browser Chrome / Safari di HP yang terhubung ke Wi-Fi yang sama untuk langsung menggunakan kamera HP:</p>
+        <div class="network-badge" id="wifiIpDisplay">
+          <span id="wifiUrlText">http://192.168.1.20:3000</span>
+          <button id="btnCopyIp" style="background:transparent;border:none;color:#38bdf8;cursor:pointer;font-size:0.8rem;font-weight:bold;">📋 Salin</button>
+        </div>
+      </div>
+
+      <!-- Features Highlights -->
+      <div class="features-grid">
+        <div class="feature-box">
+          <div class="feat-icon">📐</div>
+          <h4>Auto Deteksi Sudut</h4>
+          <p>Mencari 4 sudut tepi kertas secara cerdas dengan pembidik presisi.</p>
+        </div>
+        <div class="feature-box">
+          <div class="feat-icon">🔲</div>
+          <h4>Perspective Warp</h4>
+          <p>Meluruskan foto miring jadi dokumen persegi panjang sempurna.</p>
+        </div>
+        <div class="feature-box">
+          <div class="feat-icon">🪄</div>
+          <h4>Magic Color Filter</h4>
+          <p>Mencerahkan kertas dan menebalkan tulisan seperti mesin fotokopi.</p>
+        </div>
+        <div class="feature-box">
+          <div class="feat-icon">📑</div>
+          <h4>Multi-Halaman A4</h4>
+          <p>Gabungkan banyak lembar jadi 1 berkas PDF rapi siap kirim.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================
+         VIEW 2: CROP & PERSPECTIVE ADJUSTMENT
+         ======================================================== -->
+    <section id="view-crop" class="view">
+      <header class="app-header">
+        <button id="btnCropBack" class="header-btn text-muted">← Batal</button>
+        <span class="header-title">📐 Sesuaikan 4 Sudut</span>
+        <button id="btnWarpDone" class="header-btn">Lanjut →</button>
+      </header>
+
+      <div id="cropContainer">
+        <canvas id="cropCanvas"></canvas>
+        <!-- Kaca Pembesar Melayang (Loupe) Saat Drag Sudut -->
+        <div id="loupeContainer">
+          <canvas id="loupeCanvas"></canvas>
+        </div>
+      </div>
+
+      <div class="crop-toolbar">
+        <button id="btnResetCrop" class="tool-btn">
+          <span class="icon">⏹️</span>
+          <span>Penuh</span>
+        </button>
+        <button id="btnAutoDetect" class="tool-btn">
+          <span class="icon">✨</span>
+          <span>Auto Sudut</span>
+        </button>
+        <button id="btnRotate" class="tool-btn">
+          <span class="icon">↷</span>
+          <span>Putar 90°</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- ========================================================
+         VIEW 3: ENHANCE & DOCUMENT FILTERS
+         ======================================================== -->
+    <section id="view-enhance" class="view">
+      <header class="app-header">
+        <button id="btnEnhanceBack" class="header-btn text-muted">← Sudut</button>
+        <span class="header-title">✨ Filter & Kualitas</span>
+        <button id="btnSavePageHeader" class="header-btn">Simpan ✓</button>
+      </header>
+
+      <div class="enhance-preview-container">
+        <img id="enhancePreview" alt="Hasil Scan Dokumen">
+      </div>
+
+      <div class="enhance-controls">
+        <!-- Preset Filter Chips -->
+        <div class="filter-tabs">
+          <button class="filter-chip active" data-filter="magic">
+            <span class="chip-icon">🪄</span>
+            <span>Magic Color</span>
+          </button>
+          <button class="filter-chip" data-filter="bw">
+            <span class="chip-icon">🔲</span>
+            <span>B & W</span>
+          </button>
+          <button class="filter-chip" data-filter="grayscale">
+            <span class="chip-icon">🔘</span>
+            <span>Grayscale</span>
+          </button>
+          <button class="filter-chip" data-filter="original">
+            <span class="chip-icon">📷</span>
+            <span>Original</span>
+          </button>
+        </div>
+
+        <!-- Fine Tuning Slider -->
+        <div class="slider-container">
+          <label for="contrastSlider">Kontras</label>
+          <input type="range" id="contrastSlider" min="-20" max="60" value="15">
+        </div>
+
+        <!-- Action Row -->
+        <div class="enhance-actions">
+          <button id="btnAddAnother" class="btn-add-page">
+            <span>➕</span>
+            <span>+ Lembar Lain</span>
+          </button>
+          <button id="btnSavePage" class="btn-save-page">
+            <span>💾</span>
+            <span>Simpan Halaman</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================
+         VIEW 4: DOCUMENT SUMMARY & PDF EXPORT
+         ======================================================== -->
+    <section id="view-document" class="view">
+      <header class="app-header">
+        <button id="btnDocBack" class="header-btn text-muted">← Tambah</button>
+        <span class="header-title">📑 Dokumen Hasil Scan</span>
+        <span id="docPageCount" class="badge-count">0 Halaman</span>
+      </header>
+
+      <div class="doc-info-card">
+        <div class="doc-name-group">
+          <label for="docTitleInput">Nama Dokumen PDF</label>
+          <input type="text" id="docTitleInput" class="doc-name-input" value="Scan-Dokumen" placeholder="Contoh: Dokumen-Kontrak-2026">
+        </div>
+      </div>
+
+      <div class="pages-section-header">
+        <h3>Lembaran Dokumen</h3>
+      </div>
+
+      <div id="pagesGrid" class="pages-grid">
+        <!-- Kartu thumbnail halaman akan dirender otomatis di sini -->
+      </div>
+
+      <div class="doc-add-buttons">
+        <button id="btnDocAddCamera" class="btn-doc-add">
+          <span>📸</span>
+          <span>Foto Lembar Baru</span>
+        </button>
+        <button id="btnDocAddGallery" class="btn-doc-add">
+          <span>🖼️</span>
+          <span>Pilih dari Galeri</span>
+        </button>
+      </div>
+
+      <button id="btnExportPdf" class="btn-export-pdf">
+        <span>📄</span>
+        <span>Unduh Dokumen PDF (A4)</span>
+      </button>
+    </section>
+  </div>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

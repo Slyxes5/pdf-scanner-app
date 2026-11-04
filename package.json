@@ -1,0 +1,21 @@
+{
+  "name": "pdf-scanner-app",
+  "version": "1.0.0",
+  "description": "Aplikasi Web Scan Dokumen ke PDF via Kamera HP dengan Auto-Detect Sudut dan Filter Dokumen Bersih",
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node server.mjs"
+  },
+  "keywords": [
+    "camscanner",
+    "pdf-scanner",
+    "document-scanner",
+    "camera-to-pdf",
+    "perspective-transform",
+    "mobile-scanner"
+  ],
+  "author": "",
+  "license": "MIT"
+}
