@@ -27,6 +27,7 @@ const edgePath = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 
   const isCropActive = await page.evaluate(() => document.getElementById('view-crop').classList.contains('active'));
   console.log('Step 1 (Auto-Crop View Active):', isCropActive);
+  await page.screenshot({ path: 'C:/Projects/pdf-scanner-app/test-crop-view.png' });
 
   // 2. Click Warp Done
   await page.click('#btnWarpDone');
@@ -35,11 +36,13 @@ const edgePath = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
   const isEnhanceActive = await page.evaluate(() => document.getElementById('view-enhance').classList.contains('active'));
   const imgSrc = await page.evaluate(() => document.getElementById('enhancePreview').src);
   console.log('Step 2 (Enhance View Active):', isEnhanceActive, '| Preview src exists:', imgSrc.startsWith('data:image/jpeg'));
+  await page.screenshot({ path: 'C:/Projects/pdf-scanner-app/test-enhance-magic.png' });
 
   // 3. Test changing filter to 'bw'
   await page.click('.filter-chip[data-filter="bw"]');
-  await new Promise(r => setTimeout(r, 300));
+  await new Promise(r => setTimeout(r, 500));
   console.log('Step 3 (B&W Filter Applied)');
+  await page.screenshot({ path: 'C:/Projects/pdf-scanner-app/test-enhance-bw.png' });
 
   // 4. Save Page
   await page.click('#btnSavePage');

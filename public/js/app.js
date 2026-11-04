@@ -255,8 +255,57 @@ function handlePointerMove(e) {
 }
 
 function handlePointerUp() {
-  state.dragCornerIdx = -1;
+  if (state.dragCornerIdx !== -1) {
+    snapCornerToEdge(state.dragCornerIdx);
+    state.dragCornerIdx = -1;
+    renderCropCanvas();
+  }
   hideLoupe();
+}
+
+/**
+ * Magnetic Edge Snapping:
+ * Menempelkan sudut pin ke piksel gradien tepi terkuat di sekitarnya saat jari dilepas
+ */
+function snapCornerToEdge(idx) {
+  if (idx < 0 || idx >= 4 || !state.workingCanvas) return;
+  const pt = state.corners[idx];
+  const w = state.workingCanvas.width;
+  const h = state.workingCanvas.height;
+  const ctx = state.workingCanvas.getContext('2d', { willReadFrequently: true });
+
+  const radius = 14;
+  const sx = Math.max(1, Math.round(pt.x) - radius);
+  const sy = Math.max(1, Math.round(pt.y) - radius);
+  const sw = Math.min(w - 2 - sx, radius * 2);
+  const sh = Math.min(h - 2 - sy, radius * 2);
+  if (sw <= 3 || sh <= 3) return;
+
+  const patch = ctx.getImageData(sx, sy, sw, sh).data;
+  let maxGrad = 0;
+  let bestX = pt.x;
+  let bestY = pt.y;
+
+  for (let py = 1; py < sh - 1; py++) {
+    for (let px = 1; px < sw - 1; px++) {
+      const idxR = (py * sw + px) * 4;
+      const lumL = 0.299 * patch[idxR - 4] + 0.587 * patch[idxR - 3] + 0.114 * patch[idxR - 2];
+      const lumR = 0.299 * patch[idxR + 4] + 0.587 * patch[idxR + 5] + 0.114 * patch[idxR + 6];
+      const lumU = 0.299 * patch[idxR - sw * 4] + 0.587 * patch[idxR - sw * 4 + 1] + 0.114 * patch[idxR - sw * 4 + 2];
+      const lumD = 0.299 * patch[idxR + sw * 4] + 0.587 * patch[idxR + sw * 4 + 1] + 0.114 * patch[idxR + sw * 4 + 2];
+      const grad = Math.abs(lumR - lumL) + Math.abs(lumD - lumU);
+      if (grad > maxGrad) {
+        maxGrad = grad;
+        bestX = sx + px;
+        bestY = sy + py;
+      }
+    }
+  }
+
+  // Snap otomatis jika gradien kontras tinggi
+  if (maxGrad > 40) {
+    state.corners[idx] = { x: bestX, y: bestY };
+  }
 }
 
 function showLoupe(canvasPos) {
@@ -322,11 +371,18 @@ document.getElementById('btnResetCrop').addEventListener('click', () => {
 });
 
 document.getElementById('btnAutoDetect').addEventListener('click', () => {
-  const w = state.workingCanvas.width;
-  const h = state.workingCanvas.height;
-  const imgData = state.workingCanvas.getContext('2d').getImageData(0, 0, w, h);
-  state.corners = ScannerCore.detectDocumentCorners(w, h, imgData);
-  renderCropCanvas();
+  const btn = document.getElementById('btnAutoDetect');
+  const origText = btn.innerHTML;
+  btn.innerHTML = '<span class="icon">⏳</span><span>Mencari...</span>';
+
+  setTimeout(() => {
+    const w = state.workingCanvas.width;
+    const h = state.workingCanvas.height;
+    const imgData = state.workingCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h);
+    state.corners = ScannerCore.detectDocumentCorners(w, h, imgData);
+    renderCropCanvas();
+    btn.innerHTML = origText;
+  }, 30);
 });
 
 document.getElementById('btnRotate').addEventListener('click', () => {
