@@ -514,25 +514,19 @@ document.getElementById('btnDocBack')?.addEventListener('click', () => {
   }
 });
 
-// Wi-Fi Display & Copy Helper
-const wifiUrlText = document.getElementById('wifiUrlText');
-const btnCopyIp = document.getElementById('btnCopyIp');
-
-if (wifiUrlText && window.location.origin) {
-  if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-    wifiUrlText.textContent = window.location.origin;
-  }
-}
-
-btnCopyIp?.addEventListener('click', () => {
-  const url = wifiUrlText.textContent;
-  navigator.clipboard.writeText(url).then(() => {
-    btnCopyIp.textContent = '✅ Tersalin!';
-    setTimeout(() => {
-      btnCopyIp.textContent = '📋 Salin';
-    }, 2000);
-  }).catch(() => {
-    prompt('Salin tautan ini untuk dibuka di HP:', url);
+// Copy Helpers for Tailscale & Wi-Fi URL
+document.querySelectorAll('.btn-copy').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const url = btn.dataset.url;
+    navigator.clipboard.writeText(url).then(() => {
+      const orig = btn.textContent;
+      btn.textContent = '✅ Tersalin!';
+      setTimeout(() => {
+        btn.textContent = orig;
+      }, 2000);
+    }).catch(() => {
+      prompt('Salin tautan ini untuk dibuka di HP:', url);
+    });
   });
 });
 

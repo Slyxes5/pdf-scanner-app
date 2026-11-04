@@ -47,13 +47,23 @@
         </button>
       </div>
 
-      <!-- Local Network Direct Connect -->
+      <!-- Mobile & Tailscale Direct Connect -->
       <div class="mobile-connect-card">
         <h4>📱 Akses Langsung di HP Anda</h4>
-        <p>Buka browser Chrome / Safari di HP yang terhubung ke Wi-Fi yang sama untuk langsung menggunakan kamera HP:</p>
-        <div class="network-badge" id="wifiIpDisplay">
-          <span id="wifiUrlText">http://192.168.1.20:3000</span>
-          <button id="btnCopyIp" style="background:transparent;border:none;color:#38bdf8;cursor:pointer;font-size:0.8rem;font-weight:bold;">📋 Salin</button>
+        <p>Buka peramban (Safari / Chrome) di iPhone / HP Anda:</p>
+        
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div style="font-size:0.75rem;color:#38bdf8;font-weight:600;">🔒 Lewat Tailscale (Bisa dari mana saja / paket data):</div>
+          <div class="network-badge">
+            <span>http://100.78.9.65:3000</span>
+            <button class="btn-copy" data-url="http://100.78.9.65:3000" style="background:transparent;border:none;color:#38bdf8;cursor:pointer;font-size:0.8rem;font-weight:bold;">📋 Salin</button>
+          </div>
+
+          <div style="font-size:0.75rem;color:#94a3b8;font-weight:600;margin-top:4px;">📶 Lewat Wi-Fi yang sama:</div>
+          <div class="network-badge">
+            <span>http://192.168.1.20:3000</span>
+            <button class="btn-copy" data-url="http://192.168.1.20:3000" style="background:transparent;border:none;color:#38bdf8;cursor:pointer;font-size:0.8rem;font-weight:bold;">📋 Salin</button>
+          </div>
         </div>
       </div>
 
