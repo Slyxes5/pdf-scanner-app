@@ -373,7 +373,7 @@ document.getElementById('btnResetCrop').addEventListener('click', () => {
 document.getElementById('btnAutoDetect').addEventListener('click', () => {
   const btn = document.getElementById('btnAutoDetect');
   const origText = btn.innerHTML;
-  btn.innerHTML = '<span class="icon">⏳</span><span>Mencari...</span>';
+  btn.innerHTML = '<span>Mencari...</span>';
 
   setTimeout(() => {
     const w = state.workingCanvas.width;
@@ -495,8 +495,18 @@ function renderPagesGrid() {
       <div class="thumb-header">
         <span>Hal ${index + 1}</span>
         <div class="thumb-actions">
-          <button class="thumb-rot-btn" data-id="${page.id}" title="Putar 90°">↷</button>
-          <button class="thumb-del-btn" data-id="${page.id}" title="Hapus halaman">&times;</button>
+          <button class="thumb-rot-btn" data-id="${page.id}" title="Putar 90°" aria-label="Putar 90 Derajat">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;">
+              <polyline points="23 4 23 10 17 10"/>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+            </svg>
+          </button>
+          <button class="thumb-del-btn" data-id="${page.id}" title="Hapus halaman" aria-label="Hapus">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
         </div>
       </div>
       <img src="${page.canvas.toDataURL('image/jpeg', 0.6)}" alt="Halaman ${index + 1}">
@@ -507,7 +517,7 @@ function renderPagesGrid() {
   // Event putar halaman di galeri
   document.querySelectorAll('.thumb-rot-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
-      const id = e.target.dataset.id;
+      const id = e.currentTarget.dataset.id;
       const pageObj = state.pages.find(p => p.id === id);
       if (pageObj) {
         pageObj.canvas = ScannerCore.rotateCanvas(pageObj.canvas, 90);
@@ -519,7 +529,7 @@ function renderPagesGrid() {
   // Event hapus halaman
   document.querySelectorAll('.thumb-del-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
-      const id = e.target.dataset.id;
+      const id = e.currentTarget.dataset.id;
       state.pages = state.pages.filter(p => p.id !== id);
       renderPagesGrid();
       if (state.pages.length === 0) {
@@ -546,7 +556,7 @@ document.getElementById('btnExportPdf').addEventListener('click', async () => {
 
   const btn = document.getElementById('btnExportPdf');
   btn.disabled = true;
-  btn.textContent = 'Membuat PDF... ⏳';
+  btn.textContent = 'Membuat PDF...';
 
   try {
     const docTitle = document.getElementById('docTitleInput').value.trim() || 'Scan-Dokumen';
@@ -568,7 +578,7 @@ document.getElementById('btnExportPdf').addEventListener('click', async () => {
     alert("Terjadi kesalahan saat mengekspor PDF: " + err.message);
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Unduh Berkas PDF 📄';
+    btn.textContent = 'Unduh PDF';
   }
 });
 
@@ -601,10 +611,10 @@ document.querySelectorAll('.btn-copy').forEach(btn => {
     const url = btn.dataset.url;
     navigator.clipboard.writeText(url).then(() => {
       const orig = btn.textContent;
-      btn.textContent = '✅ Tersalin!';
+      btn.textContent = 'Tersalin';
       setTimeout(() => {
         btn.textContent = orig;
-      }, 2000);
+      }, 1500);
     }).catch(() => {
       prompt('Salin tautan ini untuk dibuka di HP:', url);
     });

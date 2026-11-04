@@ -6,105 +6,115 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="theme-color" content="#0a0e17">
-  <title>SnapScanner PDF — Auto Scan Dokumen ke PDF via Kamera HP</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📄</text></svg>">
+  <meta name="theme-color" content="#090d16">
+  <title>SnapScanner</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%2338bdf8%22 stroke-width=%222%22><path d=%22M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z%22/><polyline points=%2214 2 14 8 20 8%22/></svg>">
   
   <link rel="stylesheet" href="/css/styles.css">
-  <!-- Pustaka jsPDF offline-ready -->
   <script src="/assets/jspdf.umd.min.js"></script>
 </head>
 <body>
   <div id="app">
-    <!-- Hidden Inputs untuk Kamera HP & Galeri File -->
+    <!-- Hidden File Inputs -->
     <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display: none;">
     <input type="file" id="fileInput" accept="image/*" style="display: none;">
 
     <!-- ========================================================
-         VIEW 1: HOME & DASHBOARD
+         VIEW 1: HOME
          ======================================================== -->
     <section id="view-home" class="view active">
-      <div class="home-hero">
-        <div class="hero-badge">⚡ CamScanner-Style Web Engine</div>
-        <div class="hero-icon">📄</div>
-        <h1>SnapScanner PDF</h1>
-        <p>Jepret dokumen lewat kamera HP, auto-deteksi sudut, luruskan perspektif, dan hasilkan berkas PDF A4 jernih dalam sekejap.</p>
-      </div>
+      <header class="home-topbar">
+        <div class="brand">
+          <svg class="brand-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+          <span class="brand-name">SnapScanner</span>
+        </div>
+        <span class="status-pill">Siap</span>
+      </header>
 
-      <!-- Action Buttons -->
-      <div class="capture-actions">
-        <button id="btnStartCamera" class="btn-primary-capture">
-          <span>📸</span>
-          <span>Ambil Foto Dokumen (Kamera)</span>
-        </button>
-        <button id="btnStartGallery" class="btn-secondary-capture">
-          <span>🖼️</span>
-          <span>Pilih dari Galeri Foto</span>
-        </button>
-        <button id="btnStartSample" class="btn-demo-capture">
-          <span>✨</span>
-          <span>Coba Dokumen Contoh (Test Demo)</span>
-        </button>
-      </div>
+      <div class="home-content">
+        <div class="home-intro">
+          <h1>Pindai Dokumen</h1>
+          <p>Ubah foto dokumen fisik menjadi berkas PDF yang lurus, bersih, dan tajam.</p>
+        </div>
 
-      <!-- Mobile & Tailscale Direct Connect -->
-      <div class="mobile-connect-card">
-        <h4>📱 Akses Langsung di HP Anda</h4>
-        <p>Buka peramban (Safari / Chrome) di iPhone / HP Anda:</p>
-        
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          <div style="font-size:0.75rem;color:#38bdf8;font-weight:600;">🔒 Lewat Tailscale (Bisa dari mana saja / paket data):</div>
-          <div class="network-badge">
-            <span>http://100.78.9.65:3000</span>
-            <button class="btn-copy" data-url="http://100.78.9.65:3000" style="background:transparent;border:none;color:#38bdf8;cursor:pointer;font-size:0.8rem;font-weight:bold;">📋 Salin</button>
+        <!-- Action Buttons -->
+        <div class="capture-actions">
+          <button id="btnStartCamera" class="btn-primary">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+              <circle cx="12" cy="13" r="4"/>
+            </svg>
+            <span>Ambil Foto</span>
+          </button>
+
+          <button id="btnStartGallery" class="btn-secondary">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+              <polyline points="21 15 16 10 5 21"/>
+            </svg>
+            <span>Pilih Gambar</span>
+          </button>
+
+          <button id="btnStartSample" class="btn-subtle">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+            </svg>
+            <span>Gunakan Sampel Dokumen</span>
+          </button>
+        </div>
+
+        <!-- Connection Card -->
+        <div class="connect-card">
+          <div class="connect-header">
+            <span class="connect-label">Akses Jaringan</span>
           </div>
 
-          <div style="font-size:0.75rem;color:#94a3b8;font-weight:600;margin-top:4px;">📶 Lewat Wi-Fi yang sama:</div>
-          <div class="network-badge">
-            <span>http://192.168.1.20:3000</span>
-            <button class="btn-copy" data-url="http://192.168.1.20:3000" style="background:transparent;border:none;color:#38bdf8;cursor:pointer;font-size:0.8rem;font-weight:bold;">📋 Salin</button>
-          </div>
-        </div>
-      </div>
+          <div class="connect-list">
+            <div class="connect-item">
+              <div class="connect-info">
+                <span class="connect-tag">Tailscale</span>
+                <span class="connect-url">http://100.78.9.65:3000</span>
+              </div>
+              <button class="btn-copy" data-url="http://100.78.9.65:3000">Salin</button>
+            </div>
 
-      <!-- Features Highlights -->
-      <div class="features-grid">
-        <div class="feature-box">
-          <div class="feat-icon">📐</div>
-          <h4>Auto Deteksi Sudut</h4>
-          <p>Mencari 4 sudut tepi kertas secara cerdas dengan pembidik presisi.</p>
-        </div>
-        <div class="feature-box">
-          <div class="feat-icon">🔲</div>
-          <h4>Perspective Warp</h4>
-          <p>Meluruskan foto miring jadi dokumen persegi panjang sempurna.</p>
-        </div>
-        <div class="feature-box">
-          <div class="feat-icon">🪄</div>
-          <h4>Magic Color Filter</h4>
-          <p>Mencerahkan kertas dan menebalkan tulisan seperti mesin fotokopi.</p>
-        </div>
-        <div class="feature-box">
-          <div class="feat-icon">📑</div>
-          <h4>Multi-Halaman A4</h4>
-          <p>Gabungkan banyak lembar jadi 1 berkas PDF rapi siap kirim.</p>
+            <div class="connect-item">
+              <div class="connect-info">
+                <span class="connect-tag">Wi-Fi</span>
+                <span class="connect-url">http://192.168.1.20:3000</span>
+              </div>
+              <button class="btn-copy" data-url="http://192.168.1.20:3000">Salin</button>
+            </div>
+          </div>
         </div>
       </div>
     </section>
 
     <!-- ========================================================
-         VIEW 2: CROP & PERSPECTIVE ADJUSTMENT
+         VIEW 2: CROP
          ======================================================== -->
     <section id="view-crop" class="view">
       <header class="app-header">
-        <button id="btnCropBack" class="header-btn text-muted">← Batal</button>
-        <span class="header-title">📐 Sesuaikan 4 Sudut</span>
-        <button id="btnWarpDone" class="header-btn">Lanjut →</button>
+        <button id="btnCropBack" class="header-btn text-muted">Batal</button>
+        <span class="header-title">Sesuaikan Sudut</span>
+        <button id="btnWarpDone" class="header-btn primary">
+          <span>Lanjut</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        </button>
       </header>
 
       <div id="cropContainer">
         <canvas id="cropCanvas"></canvas>
-        <!-- Kaca Pembesar Melayang (Loupe) Saat Drag Sudut -->
         <div id="loupeContainer">
           <canvas id="loupeCanvas"></canvas>
         </div>
@@ -112,122 +122,128 @@
 
       <div class="crop-toolbar">
         <button id="btnResetCrop" class="tool-btn">
-          <span class="icon">⏹️</span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+          </svg>
           <span>Penuh</span>
         </button>
+
         <button id="btnAutoDetect" class="tool-btn">
-          <span class="icon">✨</span>
-          <span>Auto Sudut</span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+          </svg>
+          <span>Otomatis</span>
         </button>
+
         <button id="btnRotate" class="tool-btn">
-          <span class="icon">↷</span>
-          <span>Putar 90°</span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"/>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+          </svg>
+          <span>Putar</span>
         </button>
       </div>
     </section>
 
     <!-- ========================================================
-         VIEW 3: ENHANCE & DOCUMENT FILTERS
+         VIEW 3: ENHANCE
          ======================================================== -->
     <section id="view-enhance" class="view">
       <header class="app-header">
-        <button id="btnEnhanceBack" class="header-btn text-muted">← Sudut</button>
-        <span class="header-title">✨ Filter & Kualitas</span>
-        <div style="display: flex; gap: 6px;">
-          <button id="btnEnhanceRotateHeader" class="header-btn" title="Putar 90°">↷ Putar</button>
-          <button id="btnSavePageHeader" class="header-btn" style="color: #10b981;">Simpan ✓</button>
-        </div>
+        <button id="btnEnhanceBack" class="header-btn text-muted">Kembali</button>
+        <span class="header-title">Filter Dokumen</span>
+        <button id="btnSavePageHeader" class="header-btn primary">Simpan</button>
       </header>
 
       <div class="enhance-preview-container">
-        <img id="enhancePreview" alt="Hasil Scan Dokumen">
+        <img id="enhancePreview" alt="Hasil Scan">
       </div>
 
       <div class="enhance-controls">
         <!-- Preset Filter Chips -->
         <div class="filter-tabs">
-          <button class="filter-chip active" data-filter="magic">
-            <span class="chip-icon">🪄</span>
-            <span>Magic Color</span>
-          </button>
-          <button class="filter-chip" data-filter="bw">
-            <span class="chip-icon">🔲</span>
-            <span>B & W</span>
-          </button>
-          <button class="filter-chip" data-filter="grayscale">
-            <span class="chip-icon">🔘</span>
-            <span>Grayscale</span>
-          </button>
-          <button class="filter-chip" data-filter="original">
-            <span class="chip-icon">📷</span>
-            <span>Original</span>
-          </button>
+          <button class="filter-chip active" data-filter="magic">Magic</button>
+          <button class="filter-chip" data-filter="bw">Hitam Putih</button>
+          <button class="filter-chip" data-filter="grayscale">Grayscale</button>
+          <button class="filter-chip" data-filter="original">Asli</button>
         </div>
 
-        <!-- Fine Tuning Slider -->
+        <!-- Slider Kontras -->
         <div class="slider-container">
-          <label for="contrastSlider">Kontras</label>
+          <span class="slider-label">Kontras</span>
           <input type="range" id="contrastSlider" min="-20" max="60" value="15">
         </div>
 
         <!-- Action Row -->
         <div class="enhance-actions">
-          <button id="btnEnhanceRotate" class="btn-rotate-page" title="Putar 90°">
-            <span>↷</span>
+          <button id="btnEnhanceRotate" class="btn-tool" title="Putar 90 Derajat">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 4 23 10 17 10"/>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+            </svg>
             <span>Putar</span>
           </button>
-          <button id="btnAddAnother" class="btn-add-page">
-            <span>➕</span>
-            <span>+ Lembar</span>
+          <button id="btnAddAnother" class="btn-tool">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            <span>Tambah</span>
           </button>
-          <button id="btnSavePage" class="btn-save-page">
-            <span>💾</span>
-            <span>Simpan</span>
-          </button>
+          <button id="btnSavePage" class="btn-action">Simpan</button>
         </div>
       </div>
     </section>
 
     <!-- ========================================================
-         VIEW 4: DOCUMENT SUMMARY & PDF EXPORT
+         VIEW 4: DOCUMENT & EXPORT
          ======================================================== -->
     <section id="view-document" class="view">
       <header class="app-header">
-        <button id="btnDocBack" class="header-btn text-muted">← Tambah</button>
-        <span class="header-title">📑 Dokumen Hasil Scan</span>
+        <button id="btnDocBack" class="header-btn text-muted">Scan Baru</button>
+        <span class="header-title">Dokumen</span>
         <span id="docPageCount" class="badge-count">0 Halaman</span>
       </header>
 
-      <div class="doc-info-card">
-        <div class="doc-name-group">
-          <label for="docTitleInput">Nama Dokumen PDF</label>
-          <input type="text" id="docTitleInput" class="doc-name-input" value="Scan-Dokumen" placeholder="Contoh: Dokumen-Kontrak-2026">
+      <div class="doc-body">
+        <div class="doc-info-card">
+          <label for="docTitleInput" class="doc-label">Nama Berkas</label>
+          <input type="text" id="docTitleInput" class="doc-name-input" value="Scan-Dokumen" placeholder="Nama berkas PDF...">
         </div>
-      </div>
 
-      <div class="pages-section-header">
-        <h3>Lembaran Dokumen</h3>
-      </div>
+        <div class="pages-header">
+          <h2>Daftar Halaman</h2>
+        </div>
 
-      <div id="pagesGrid" class="pages-grid">
-        <!-- Kartu thumbnail halaman akan dirender otomatis di sini -->
-      </div>
+        <div id="pagesGrid" class="pages-grid"></div>
 
-      <div class="doc-add-buttons">
-        <button id="btnDocAddCamera" class="btn-doc-add">
-          <span>📸</span>
-          <span>Foto Lembar Baru</span>
+        <div class="doc-add-buttons">
+          <button id="btnDocAddCamera" class="btn-subtle-full">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+              <circle cx="12" cy="13" r="4"/>
+            </svg>
+            <span>Kamera</span>
+          </button>
+          <button id="btnDocAddGallery" class="btn-subtle-full">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+              <polyline points="21 15 16 10 5 21"/>
+            </svg>
+            <span>Galeri</span>
+          </button>
+        </div>
+
+        <button id="btnExportPdf" class="btn-primary-full">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          <span>Unduh PDF</span>
         </button>
-        <button id="btnDocAddGallery" class="btn-doc-add">
-          <span>🖼️</span>
-          <span>Pilih dari Galeri</span>
-        </button>
       </div>
-
-      <button id="btnExportPdf" class="btn-export-pdf">
-        <span>📄</span>
-        <span>Unduh Dokumen PDF (A4)</span>
-      </button>
     </section>
   </div>
 
