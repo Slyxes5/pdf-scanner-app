@@ -37,6 +37,18 @@ function showView(name) {
   Object.keys(views).forEach(key => {
     views[key].classList.toggle('active', key === name);
   });
+
+  // Sinkronisasi state tombol navigasi bawah
+  document.querySelectorAll('.bottom-nav .nav-item').forEach(item => {
+    item.classList.remove('active');
+  });
+  if (name === 'home') {
+    document.getElementById('navBtnHome')?.classList.add('active');
+    document.getElementById('navBtnHome2')?.classList.add('active');
+  } else if (name === 'doc') {
+    document.getElementById('navBtnDocs')?.classList.add('active');
+    document.getElementById('navBtnDocs2')?.classList.add('active');
+  }
 }
 
 // -------------------------------------------------------------
@@ -190,9 +202,9 @@ function renderCropCanvas() {
   cropCtx.lineTo(pts[3].x, pts[3].y);
   cropCtx.closePath();
   cropCtx.lineWidth = 3;
-  cropCtx.strokeStyle = '#00f0ff';
-  cropCtx.shadowColor = 'rgba(0, 240, 255, 0.8)';
-  cropCtx.shadowBlur = 10;
+  cropCtx.strokeStyle = '#d4fb38';
+  cropCtx.shadowColor = 'rgba(212, 251, 56, 0.7)';
+  cropCtx.shadowBlur = 12;
   cropCtx.stroke();
   cropCtx.shadowBlur = 0;
 
@@ -200,14 +212,14 @@ function renderCropCanvas() {
   pts.forEach((pt, i) => {
     cropCtx.beginPath();
     cropCtx.arc(pt.x, pt.y, 16, 0, Math.PI * 2);
-    cropCtx.fillStyle = '#00f0ff';
-    cropCtx.shadowColor = 'rgba(0, 0, 0, 0.6)';
-    cropCtx.shadowBlur = 6;
+    cropCtx.fillStyle = '#d4fb38';
+    cropCtx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+    cropCtx.shadowBlur = 8;
     cropCtx.fill();
 
     cropCtx.beginPath();
-    cropCtx.arc(pt.x, pt.y, 7, 0, Math.PI * 2);
-    cropCtx.fillStyle = '#ffffff';
+    cropCtx.arc(pt.x, pt.y, 6, 0, Math.PI * 2);
+    cropCtx.fillStyle = '#080a0f';
     cropCtx.fill();
     cropCtx.shadowBlur = 0;
   });
@@ -338,7 +350,7 @@ function showLoupe(canvasPos) {
   );
 
   // Crosshair bidik
-  loupeCtx.strokeStyle = '#00f0ff';
+  loupeCtx.strokeStyle = '#d4fb38';
   loupeCtx.lineWidth = 2;
   loupeCtx.beginPath();
   loupeCtx.arc(lSize / 2, lSize / 2, 8, 0, Math.PI * 2);
@@ -455,6 +467,10 @@ document.querySelectorAll('.filter-chip').forEach(btn => {
 const contrastSlider = document.getElementById('contrastSlider');
 contrastSlider.addEventListener('input', (e) => {
   state.contrast = parseInt(e.target.value, 10);
+  const valLabel = document.getElementById('contrastValueLabel');
+  if (valLabel) {
+    valLabel.textContent = (state.contrast > 0 ? '+' : '') + state.contrast;
+  }
   updateEnhancedPreview();
 });
 
@@ -486,7 +502,43 @@ function saveCurrentPage() {
 // -------------------------------------------------------------
 function renderPagesGrid() {
   pagesGrid.innerHTML = '';
-  document.getElementById('docPageCount').textContent = `${state.pages.length} Halaman`;
+  const count = state.pages.length;
+  document.getElementById('docPageCount').textContent = `${count} Halaman`;
+
+  // Sinkronisasi badge navigasi bawah
+  const badge1 = document.getElementById('navDocBadge');
+  const badge2 = document.getElementById('navDocBadge2');
+  if (badge1) {
+    badge1.textContent = count;
+    badge1.style.display = count > 0 ? 'flex' : 'none';
+  }
+  if (badge2) {
+    badge2.textContent = count;
+    badge2.style.display = count > 0 ? 'flex' : 'none';
+  }
+
+  // Update daftar dokumen siap ekspor di beranda
+  const homeRecents = document.getElementById('homeRecentScans');
+  const homeList = document.getElementById('homeRecentList');
+  if (homeRecents && homeList) {
+    if (count > 0) {
+      homeRecents.style.display = 'flex';
+      homeList.innerHTML = '';
+      state.pages.forEach((p, idx) => {
+        const thumb = document.createElement('img');
+        thumb.className = 'recents-thumb';
+        thumb.src = p.canvas.toDataURL('image/jpeg', 0.5);
+        thumb.alt = `Halaman ${idx + 1}`;
+        thumb.title = `Halaman ${idx + 1} - Klik untuk lihat`;
+        thumb.style.cursor = 'pointer';
+        thumb.addEventListener('click', () => showView('doc'));
+        homeList.appendChild(thumb);
+      });
+    } else {
+      homeRecents.style.display = 'none';
+      homeList.innerHTML = '';
+    }
+  }
 
   state.pages.forEach((page, index) => {
     const card = document.createElement('div');
@@ -612,11 +664,56 @@ document.querySelectorAll('.btn-copy').forEach(btn => {
     navigator.clipboard.writeText(url).then(() => {
       const orig = btn.textContent;
       btn.textContent = 'Tersalin';
+      btn.classList.add('copied');
       setTimeout(() => {
         btn.textContent = orig;
+        btn.classList.remove('copied');
       }, 1500);
     }).catch(() => {
       prompt('Salin tautan ini untuk dibuka di HP:', url);
+    });
+  });
+});
+
+// Floating Bottom Nav Bar Listeners
+document.getElementById('navBtnHome')?.addEventListener('click', () => showView('home'));
+document.getElementById('navBtnHome2')?.addEventListener('click', () => showView('home'));
+
+document.getElementById('navBtnScan')?.addEventListener('click', () => cameraInput.click());
+document.getElementById('navBtnScan2')?.addEventListener('click', () => cameraInput.click());
+
+document.getElementById('navBtnDocs')?.addEventListener('click', () => showView('doc'));
+document.getElementById('navBtnDocs2')?.addEventListener('click', () => showView('doc'));
+
+document.getElementById('btnHomeViewDoc')?.addEventListener('click', () => showView('doc'));
+
+// Top info button: scroll to network card
+document.getElementById('btnTopInfo')?.addEventListener('click', () => {
+  const card = document.getElementById('networkCard');
+  if (card) {
+    card.scrollIntoView({ behavior: 'smooth' });
+    card.style.borderColor = 'var(--accent-neon)';
+    setTimeout(() => {
+      card.style.borderColor = '';
+    }, 1800);
+  }
+});
+
+// Category pills on Home view
+document.querySelectorAll('.cat-pill').forEach(pill => {
+  pill.addEventListener('click', () => {
+    document.querySelectorAll('.cat-pill').forEach(p => p.classList.remove('active'));
+    pill.classList.add('active');
+    const preset = pill.dataset.preset;
+    if (preset === 'receipt') {
+      state.filter = 'bw';
+    } else if (preset === 'book') {
+      state.filter = 'grayscale';
+    } else {
+      state.filter = 'magic';
+    }
+    document.querySelectorAll('.filter-chip').forEach(b => {
+      b.classList.toggle('active', b.dataset.filter === state.filter);
     });
   });
 });
