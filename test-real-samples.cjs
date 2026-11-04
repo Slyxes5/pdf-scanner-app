@@ -19,7 +19,7 @@ const fs = require('fs');
   await page.goto('http://localhost:3000', { waitUntil: 'networkidle0' });
 
   // Function to process a real photo file
-  async function testFile(filePath, prefix) {
+  async function testFile(filePath, prefix, rotateCount = 0) {
     console.log(`\n=== Processing: ${prefix} ===`);
     await page.goto('http://localhost:3000', { waitUntil: 'networkidle0' });
 
@@ -37,6 +37,13 @@ const fs = require('fs');
     await page.click('#btnWarpDone');
     await new Promise(r => setTimeout(r, 1000));
 
+    // Rotate if needed (e.g. for sideways receipt)
+    for (let i = 0; i < rotateCount; i++) {
+      console.log(`Rotating 90 deg clockwise (step ${i + 1}/${rotateCount})...`);
+      await page.click('#btnEnhanceRotate');
+      await new Promise(r => setTimeout(r, 600));
+    }
+
     // Capture Magic Color result
     const magicScreen = `C:/Projects/pdf-scanner-app/public/assets/${prefix}-2-magic.png`;
     await page.screenshot({ path: magicScreen });
@@ -50,8 +57,8 @@ const fs = require('fs');
     console.log(`Saved: ${bwScreen}`);
   }
 
-  await testFile('C:/Projects/pdf-scanner-app/public/assets/sample-page.jpg', 'doc-page');
-  await testFile('C:/Projects/pdf-scanner-app/public/assets/sample-receipt.jpg', 'doc-receipt');
+  await testFile('C:/Projects/pdf-scanner-app/public/assets/sample-page.jpg', 'doc-page', 0);
+  await testFile('C:/Projects/pdf-scanner-app/public/assets/sample-receipt.jpg', 'doc-receipt', 3);
 
   await browser.close();
   console.log('Finished testing all real samples!');

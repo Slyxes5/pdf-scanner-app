@@ -396,10 +396,59 @@ export class ScannerCore {
   }
 
   /**
+   * Menghitung dimensi alami dokumen dari 4 sudut (mempertahankan rasio aspek asli, tidak gepeng)
+   */
+  static computeNaturalDimensions(corners, maxDim = 2000) {
+    const [tl, tr, br, bl] = corners;
+    const widthBottom = Math.hypot(br.x - bl.x, br.y - bl.y);
+    const widthTop = Math.hypot(tr.x - tl.x, tr.y - tl.y);
+    const naturalW = Math.max(widthBottom, widthTop);
+
+    const heightRight = Math.hypot(tr.x - br.x, tr.y - br.y);
+    const heightLeft = Math.hypot(tl.x - bl.x, tl.y - bl.y);
+    const naturalH = Math.max(heightRight, heightLeft);
+
+    // Skala resolusi tinggi untuk menjaga ketajaman huruf
+    const scale = maxDim / Math.max(naturalW, naturalH);
+    const targetW = Math.max(300, Math.round(naturalW * scale));
+    const targetH = Math.max(300, Math.round(naturalH * scale));
+
+    return { width: targetW, height: targetH };
+  }
+
+  /**
+   * Memutar canvas 90 derajat searah jarum jam secara bebas
+   */
+  static rotateCanvas(canvas, degrees = 90) {
+    const rad = (degrees * Math.PI) / 180;
+    const newCanvas = document.createElement('canvas');
+
+    if (degrees === 90 || degrees === 270) {
+      newCanvas.width = canvas.height;
+      newCanvas.height = canvas.width;
+    } else {
+      newCanvas.width = canvas.width;
+      newCanvas.height = canvas.height;
+    }
+
+    const ctx = newCanvas.getContext('2d', { willReadFrequently: true });
+    ctx.translate(newCanvas.width / 2, newCanvas.height / 2);
+    ctx.rotate(rad);
+    ctx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
+    return newCanvas;
+  }
+
+  /**
    * Meluruskan sudut dokumen foto ke bidang datar persegi (Perspective Warp)
    * Menggunakan interpolasi bilinear terbalik (Backward Mapping) bebas celah
    */
-  static warpPerspective(sourceCanvas, corners, outWidth = 1200, outHeight = 1697) {
+  static warpPerspective(sourceCanvas, corners, outWidth = null, outHeight = null) {
+    if (!outWidth || !outHeight) {
+      const dims = this.computeNaturalDimensions(corners, 2000);
+      outWidth = dims.width;
+      outHeight = dims.height;
+    }
+
     const targetCanvas = document.createElement('canvas');
     targetCanvas.width = outWidth;
     targetCanvas.height = outHeight;
@@ -661,6 +710,37 @@ export class ScannerCore {
             val = factor * (val - 128) + 128;
           }
           data[i + c] = Math.min(255, Math.max(0, val));
+        }
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // E. TEXT SHARPENING PASS (Laplacian Unsharp Mask)
+    // Menajamkan guratan huruf, angka kecil, stempel, dan tanda tangan agar jernih dibaca
+    // -------------------------------------------------------------------------
+    if (filterType === 'magic' || filterType === 'bw' || filterType === 'grayscale') {
+      const sharpenAlpha = 0.40;
+      const copy = new Uint8ClampedArray(data);
+
+      for (let y = 1; y < height - 1; y++) {
+        const row = y * width;
+        for (let x = 1; x < width - 1; x++) {
+          const idx = (row + x) * 4;
+          const lum = 0.299 * copy[idx] + 0.587 * copy[idx + 1] + 0.114 * copy[idx + 2];
+
+          // Hanya tajamkan area teks/tinta dan batas kontras (bukan background putih polos)
+          if (lum < 235) {
+            for (let c = 0; c < 3; c++) {
+              const val = copy[idx + c];
+              const up = copy[idx - width * 4 + c];
+              const down = copy[idx + width * 4 + c];
+              const left = copy[idx - 4 + c];
+              const right = copy[idx + 4 + c];
+
+              const laplacian = (4 * val) - up - down - left - right;
+              data[idx + c] = Math.min(255, Math.max(0, Math.round(val + sharpenAlpha * laplacian)));
+            }
+          }
         }
       }
     }

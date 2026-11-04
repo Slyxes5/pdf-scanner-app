@@ -133,7 +133,10 @@
       <header class="app-header">
         <button id="btnEnhanceBack" class="header-btn text-muted">← Sudut</button>
         <span class="header-title">✨ Filter & Kualitas</span>
-        <button id="btnSavePageHeader" class="header-btn">Simpan ✓</button>
+        <div style="display: flex; gap: 6px;">
+          <button id="btnEnhanceRotateHeader" class="header-btn" title="Putar 90°">↷ Putar</button>
+          <button id="btnSavePageHeader" class="header-btn" style="color: #10b981;">Simpan ✓</button>
+        </div>
       </header>
 
       <div class="enhance-preview-container">
@@ -169,13 +172,17 @@
 
         <!-- Action Row -->
         <div class="enhance-actions">
+          <button id="btnEnhanceRotate" class="btn-rotate-page" title="Putar 90°">
+            <span>↷</span>
+            <span>Putar</span>
+          </button>
           <button id="btnAddAnother" class="btn-add-page">
             <span>➕</span>
-            <span>+ Lembar Lain</span>
+            <span>+ Lembar</span>
           </button>
           <button id="btnSavePage" class="btn-save-page">
             <span>💾</span>
-            <span>Simpan Halaman</span>
+            <span>Simpan</span>
           </button>
         </div>
       </div>

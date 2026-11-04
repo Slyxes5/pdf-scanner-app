@@ -412,14 +412,24 @@ function rotateWorkingCanvas() {
 }
 
 // -------------------------------------------------------------
-// 3. Warp to A4 & Filter / Enhance View
+// 3. Warp to Document & Filter / Enhance View
 // -------------------------------------------------------------
 document.getElementById('btnWarpDone').addEventListener('click', () => {
-  // Melakukan Warp Perspektif ke format standar A4 (1200 x 1697)
-  state.warpedCanvas = ScannerCore.warpPerspective(state.workingCanvas, state.corners, 1200, 1697);
+  // Melakukan Warp Perspektif dengan dimensi alami dokumen (mempertahankan rasio aspek asli, tidak gepeng)
+  state.warpedCanvas = ScannerCore.warpPerspective(state.workingCanvas, state.corners);
   updateEnhancedPreview();
   showView('enhance');
 });
+
+// Fitur Putar 90 Derajat di Halaman Filter (Enhance View)
+function rotateEnhancedCanvas() {
+  if (!state.warpedCanvas) return;
+  state.warpedCanvas = ScannerCore.rotateCanvas(state.warpedCanvas, 90);
+  updateEnhancedPreview();
+}
+
+document.getElementById('btnEnhanceRotate')?.addEventListener('click', rotateEnhancedCanvas);
+document.getElementById('btnEnhanceRotateHeader')?.addEventListener('click', rotateEnhancedCanvas);
 
 function updateEnhancedPreview() {
   state.filteredCanvas = ScannerCore.applyDocumentFilter(
@@ -484,11 +494,26 @@ function renderPagesGrid() {
     card.innerHTML = `
       <div class="thumb-header">
         <span>Hal ${index + 1}</span>
-        <button class="thumb-del-btn" data-id="${page.id}" title="Hapus halaman">&times;</button>
+        <div class="thumb-actions">
+          <button class="thumb-rot-btn" data-id="${page.id}" title="Putar 90°">↷</button>
+          <button class="thumb-del-btn" data-id="${page.id}" title="Hapus halaman">&times;</button>
+        </div>
       </div>
       <img src="${page.canvas.toDataURL('image/jpeg', 0.6)}" alt="Halaman ${index + 1}">
     `;
     pagesGrid.appendChild(card);
+  });
+
+  // Event putar halaman di galeri
+  document.querySelectorAll('.thumb-rot-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const id = e.target.dataset.id;
+      const pageObj = state.pages.find(p => p.id === id);
+      if (pageObj) {
+        pageObj.canvas = ScannerCore.rotateCanvas(pageObj.canvas, 90);
+        renderPagesGrid();
+      }
+    });
   });
 
   // Event hapus halaman
