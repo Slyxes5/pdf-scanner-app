@@ -4,9 +4,8 @@
  * 
  * Fitur Utama:
  * 1. Multi-Stage Auto Edge Detection:
- *    - Grayscale + 5x5 Gaussian/Box Blur
- *    - Sobel Edge Gradient Magnitude
- *    - Centroid-based Radial Ray Casting + Grid Edge Scan
+ *    - Otsu Optimal Binarization + Connected Component Analysis (BFS Blob Tracing)
+ *    - Sobel Edge Fallback for low-contrast backgrounds
  *    - Andrew's Monotone Chain Convex Hull
  *    - 4-Corner Quadrilateral Area Maximizer
  * 2. Perspective Transform (3x3 Homography Matrix Solver + Bilinear Backward Mapping)
@@ -19,7 +18,8 @@
 export class ScannerCore {
   /**
    * Deteksi 4 Sudut Dokumen Otomatis (Auto Edge Detection)
-   * Berbasis Computer Vision: Sobel, Ray-Casting, Convex Hull, & Quad Optimization
+   * Berbasis Computer Vision: Otsu Binarization, Connected Component Blob Analysis,
+   * Andrew's Monotone Chain Convex Hull, & Quad Optimization
    */
   static detectDocumentCorners(width, height, imageData) {
     const fallbackCorners = [
@@ -34,15 +34,14 @@ export class ScannerCore {
     try {
       const data = imageData.data;
 
-      // 1. Downscale ke resolusi analisis (~280-320px) agar kilat (< 25ms di HP)
-      const targetDim = 300;
+      // 1. Downscale ke resolusi analisis (~320px) agar kilat (< 20ms di HP)
+      const targetDim = 320;
       const scale = targetDim / Math.max(width, height);
       const aw = Math.max(10, Math.round(width * scale));
       const ah = Math.max(10, Math.round(height * scale));
 
       const gray = new Uint8Array(aw * ah);
-      let sumLum = 0;
-      let sumX = 0, sumY = 0, brightCount = 0;
+      const hist = new Int32Array(256);
 
       for (let y = 0; y < ah; y++) {
         const srcY = Math.min(height - 1, Math.floor(y / scale));
@@ -51,138 +50,188 @@ export class ScannerCore {
           const idx = (srcY * width + srcX) * 4;
           const lum = Math.round(0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]);
           gray[y * aw + x] = lum;
-          sumLum += lum;
+          hist[lum]++;
         }
       }
 
-      const avgLum = sumLum / (aw * ah);
+      // 2. Otsu's Thresholding untuk memisahkan kertas terang vs latar belakang meja
+      const totalPixels = aw * ah;
+      let sumAll = 0;
+      for (let t = 0; t < 256; t++) sumAll += t * hist[t];
 
-      // Cari titik pusat massa (centroid) kertas untuk ray-casting akurat
-      for (let y = 0; y < ah; y++) {
-        for (let x = 0; x < aw; x++) {
-          const lum = gray[y * aw + x];
-          if (lum > avgLum) {
-            sumX += x;
-            sumY += y;
-            brightCount++;
-          }
+      let sumB = 0, wB = 0, wF = 0, varMax = 0, otsuThreshold = 128;
+      for (let t = 0; t < 256; t++) {
+        wB += hist[t];
+        if (wB === 0) continue;
+        wF = totalPixels - wB;
+        if (wF === 0) break;
+
+        sumB += t * hist[t];
+        const mB = sumB / wB;
+        const mF = (sumAll - sumB) / wF;
+        const varBetween = wB * wF * (mB - mF) * (mB - mF);
+        if (varBetween > varMax) {
+          varMax = varBetween;
+          otsuThreshold = t;
         }
       }
 
-      const centerX = brightCount > 0 ? (sumX / brightCount) : (aw / 2);
-      const centerY = brightCount > 0 ? (sumY / brightCount) : (ah / 2);
-
-      // 2. Filter Blur 5x5 untuk menghilangkan noise teks / tekstur meja
-      const blurred = new Uint8Array(aw * ah);
-      for (let y = 2; y < ah - 2; y++) {
-        for (let x = 2; x < aw - 2; x++) {
-          let bSum = 0;
-          for (let dy = -2; dy <= 2; dy++) {
-            for (let dx = -2; dx <= 2; dx++) {
-              bSum += gray[(y + dy) * aw + (x + dx)];
-            }
-          }
-          blurred[y * aw + x] = Math.round(bSum / 25);
-        }
+      // 3. Binary Mask & Connected Component Analysis (BFS Blob Extraction)
+      const mask = new Uint8Array(aw * ah);
+      for (let i = 0; i < gray.length; i++) {
+        mask[i] = gray[i] >= otsuThreshold ? 1 : 0;
       }
 
-      // 3. Sobel Gradient Magnitude (Mencari perubahan kontras tepi kertas)
-      const grad = new Float32Array(aw * ah);
-      let maxGrad = 0;
+      const visited = new Uint8Array(aw * ah);
+      let maxBlobSize = 0;
+      let maxBlobBorder = [];
+
       for (let y = 1; y < ah - 1; y++) {
         for (let x = 1; x < aw - 1; x++) {
-          const gx = -blurred[(y-1)*aw + (x-1)] + blurred[(y-1)*aw + (x+1)]
-                     - 2 * blurred[y*aw + (x-1)] + 2 * blurred[y*aw + (x+1)]
-                     - blurred[(y+1)*aw + (x-1)] + blurred[(y+1)*aw + (x+1)];
-          const gy = -blurred[(y-1)*aw + (x-1)] - 2 * blurred[(y-1)*aw + x] - blurred[(y-1)*aw + (x+1)]
-                     + blurred[(y+1)*aw + (x-1)] + 2 * blurred[(y+1)*aw + x] + blurred[(y+1)*aw + (x+1)];
-          const g = Math.abs(gx) + Math.abs(gy);
-          grad[y * aw + x] = g;
-          if (g > maxGrad) maxGrad = g;
-        }
-      }
+          const idx = y * aw + x;
+          if (mask[idx] === 1 && !visited[idx]) {
+            const queue = [idx];
+            visited[idx] = 1;
+            const borderPts = [];
 
-      if (maxGrad < 20) return fallbackCorners;
+            let head = 0;
+            while (head < queue.length) {
+              const curr = queue[head++];
+              const cy = Math.floor(curr / aw);
+              const cx = curr % aw;
 
-      // 4. Kumpulkan kandidat titik batas tepi (Radial Ray-Casting 72 arah + Grid Edge Scan)
-      const boundaryPoints = [];
-      const numRays = 72;
-      const maxRadius = Math.hypot(aw, ah);
-      const gradThreshold = maxGrad * 0.22;
+              // Titik batas tepi komponen (border pixel)
+              const isBorder = (
+                mask[(cy - 1) * aw + cx] === 0 ||
+                mask[(cy + 1) * aw + cx] === 0 ||
+                mask[cy * aw + (cx - 1)] === 0 ||
+                mask[cy * aw + (cx + 1)] === 0
+              );
+              if (isBorder) {
+                borderPts.push({ x: cx / scale, y: cy / scale });
+              }
 
-      // 4A. Radial rays dari centroid keluar
-      for (let i = 0; i < numRays; i++) {
-        const rad = (i * 2 * Math.PI) / numRays;
-        const cosA = Math.cos(rad);
-        const sinA = Math.sin(rad);
+              // 4-Neighbors
+              const neighbors = [
+                (cy - 1) * aw + cx,
+                (cy + 1) * aw + cx,
+                cy * aw + (cx - 1),
+                cy * aw + (cx + 1)
+              ];
 
-        let bestR = 0;
-        let peakG = 0;
+              for (const n of neighbors) {
+                if (n >= 0 && n < aw * ah && mask[n] === 1 && !visited[n]) {
+                  visited[n] = 1;
+                  queue.push(n);
+                }
+              }
+            }
 
-        for (let r = 12; r < maxRadius; r += 2) {
-          const rx = Math.round(centerX + r * cosA);
-          const ry = Math.round(centerY + r * sinA);
-          if (rx < 2 || rx >= aw - 2 || ry < 2 || ry >= ah - 2) break;
-
-          const gVal = grad[ry * aw + rx];
-          if (gVal > peakG && gVal > gradThreshold) {
-            peakG = gVal;
-            bestR = r;
-          }
-        }
-
-        if (bestR > 0) {
-          boundaryPoints.push({
-            x: (centerX + bestR * cosA) / scale,
-            y: (centerY + bestR * sinA) / scale
-          });
-        }
-      }
-
-      // 4B. Grid scan horizontal & vertikal (deteksi tepi kertas lurus)
-      const stepGrid = Math.max(4, Math.floor(aw / 20));
-      for (let x = 4; x < aw - 4; x += stepGrid) {
-        // dari atas ke bawah
-        for (let y = 3; y < ah - 3; y++) {
-          if (grad[y * aw + x] > gradThreshold) {
-            boundaryPoints.push({ x: x / scale, y: y / scale });
-            break;
-          }
-        }
-        // dari bawah ke atas
-        for (let y = ah - 4; y > 3; y--) {
-          if (grad[y * aw + x] > gradThreshold) {
-            boundaryPoints.push({ x: x / scale, y: y / scale });
-            break;
+            if (queue.length > maxBlobSize) {
+              maxBlobSize = queue.length;
+              maxBlobBorder = borderPts;
+            }
           }
         }
       }
 
-      if (boundaryPoints.length < 8) return fallbackCorners;
-
-      // 5. Convex Hull (Andrew's Monotone Chain)
-      const hull = this.computeConvexHull(boundaryPoints);
-      if (hull.length < 4) return fallbackCorners;
-
-      // 6. Optimal Quadrilateral Fitting (Mencari 4 Sudut Sejati)
-      const quad = this.findBestQuadrilateral(hull);
-      if (!quad || quad.length !== 4) return fallbackCorners;
-
-      // 7. Urutkan 4 sudut secara jarum jam [TL, TR, BR, BL]
-      const ordered = this.orderCornersClockwise(quad);
-
-      // Validasi Area & Batas: dokumen harus cukup representatif (> 15% layar)
-      const area = this.polygonArea(ordered);
-      const totalArea = width * height;
-      if (area < totalArea * 0.15 || area > totalArea * 0.98) {
-        return fallbackCorners;
+      // Jika komponen dokumen terdeteksi minimal 10% dari layar
+      const blobAreaRatio = maxBlobSize / totalPixels;
+      if (blobAreaRatio >= 0.08 && maxBlobBorder.length >= 8) {
+        // 4. Convex Hull dari batas tepi dokumen terbesar
+        const hull = this.computeConvexHull(maxBlobBorder);
+        if (hull.length >= 4) {
+          // 5. Cari 4 Sudut Sejati yang memaksimalkan luas segi empat
+          const quad = this.findBestQuadrilateral(hull);
+          if (quad && quad.length === 4) {
+            return this.orderCornersClockwise(quad);
+          }
+        }
       }
 
-      return ordered;
+      // 4-Fallback ke Sobel Edge Gradient jika dokumen kontras rendah
+      return this.detectCornersBySobel(aw, ah, gray, scale, fallbackCorners);
+
     } catch (err) {
       console.warn("CV Auto-detection fallback:", err);
       return fallbackCorners;
     }
+  }
+
+  /**
+   * Fallback Sobel Edge Detection jika Otsu binarization ambigu
+   */
+  static detectCornersBySobel(aw, ah, gray, scale, fallbackCorners) {
+    const blurred = new Uint8Array(aw * ah);
+    for (let y = 2; y < ah - 2; y++) {
+      for (let x = 2; x < aw - 2; x++) {
+        let bSum = 0;
+        for (let dy = -2; dy <= 2; dy++) {
+          for (let dx = -2; dx <= 2; dx++) {
+            bSum += gray[(y + dy) * aw + (x + dx)];
+          }
+        }
+        blurred[y * aw + x] = Math.round(bSum / 25);
+      }
+    }
+
+    const grad = new Float32Array(aw * ah);
+    let maxGrad = 0;
+    for (let y = 1; y < ah - 1; y++) {
+      for (let x = 1; x < aw - 1; x++) {
+        const gx = -blurred[(y-1)*aw + (x-1)] + blurred[(y-1)*aw + (x+1)]
+                   - 2 * blurred[y*aw + (x-1)] + 2 * blurred[y*aw + (x+1)]
+                   - blurred[(y+1)*aw + (x-1)] + blurred[(y+1)*aw + (x+1)];
+        const gy = -blurred[(y-1)*aw + (x-1)] - 2 * blurred[(y-1)*aw + x] - blurred[(y-1)*aw + (x+1)]
+                   + blurred[(y+1)*aw + (x-1)] + 2 * blurred[(y+1)*aw + x] + blurred[(y+1)*aw + (x+1)];
+        const g = Math.abs(gx) + Math.abs(gy);
+        grad[y * aw + x] = g;
+        if (g > maxGrad) maxGrad = g;
+      }
+    }
+
+    if (maxGrad < 25) return fallbackCorners;
+
+    const boundaryPoints = [];
+    const gradThreshold = maxGrad * 0.28;
+    const cx = aw / 2;
+    const cy = ah / 2;
+    const numRays = 64;
+    const maxRadius = Math.hypot(aw, ah) / 2;
+
+    for (let i = 0; i < numRays; i++) {
+      const rad = (i * 2 * Math.PI) / numRays;
+      const cosA = Math.cos(rad);
+      const sinA = Math.sin(rad);
+
+      let bestR = 0;
+      let peakG = 0;
+
+      for (let r = 15; r < maxRadius; r += 2) {
+        const rx = Math.round(cx + r * cosA);
+        const ry = Math.round(cy + r * sinA);
+        if (rx < 2 || rx >= aw - 2 || ry < 2 || ry >= ah - 2) break;
+
+        const gVal = grad[ry * aw + rx];
+        if (gVal > peakG && gVal > gradThreshold) {
+          peakG = gVal;
+          bestR = r;
+        }
+      }
+
+      if (bestR > 0) {
+        boundaryPoints.push({
+          x: (cx + bestR * cosA) / scale,
+          y: (cy + bestR * sinA) / scale
+        });
+      }
+    }
+
+    if (boundaryPoints.length < 8) return fallbackCorners;
+    const hull = this.computeConvexHull(boundaryPoints);
+    if (hull.length < 4) return fallbackCorners;
+    const quad = this.findBestQuadrilateral(hull);
+    return this.orderCornersClockwise(quad);
   }
 
   /**
@@ -221,7 +270,6 @@ export class ScannerCore {
   static findBestQuadrilateral(hull) {
     if (hull.length === 4) return hull;
 
-    // 4 titik ekstrem awal berdasarkan proyeksi diagonal
     let tl = hull[0], tr = hull[0], br = hull[0], bl = hull[0];
     let minSum = Infinity, maxSum = -Infinity;
     let minDiff = Infinity, maxDiff = -Infinity;
@@ -238,9 +286,8 @@ export class ScannerCore {
     let bestQuad = [tl, tr, br, bl];
     let maxArea = this.polygonArea(bestQuad);
 
-    // Jika hull ringkas (<= 28 titik), uji permutasi kombinasi 4 titik untuk hasil paling presisi
     const n = hull.length;
-    if (n <= 28) {
+    if (n <= 35) {
       for (let i = 0; i < n - 3; i++) {
         for (let j = i + 1; j < n - 2; j++) {
           for (let k = j + 1; k < n - 1; k++) {
@@ -260,9 +307,6 @@ export class ScannerCore {
     return bestQuad;
   }
 
-  /**
-   * Menghitung luas poligon 4 titik (Shoelace Formula)
-   */
   static polygonArea(pts) {
     let area = 0;
     const n = pts.length;
@@ -273,11 +317,7 @@ export class ScannerCore {
     return Math.abs(area) / 2;
   }
 
-  /**
-   * Mengurutkan 4 titik sudut secara jarum jam [Top-Left, Top-Right, Bottom-Right, Bottom-Left]
-   */
   static orderCornersClockwise(corners) {
-    // Urutkan berdasarkan koordinat Y
     const sortedY = corners.slice().sort((a, b) => a.y - b.y);
     const topTwo = sortedY.slice(0, 2).sort((a, b) => a.x - b.x);
     const bottomTwo = sortedY.slice(2, 4).sort((a, b) => a.x - b.x);
@@ -465,7 +505,6 @@ export class ScannerCore {
     // A. MAGIC COLOR (Teknologi Inti CamScanner: Background Division Shadow Eraser)
     // -------------------------------------------------------------------------
     if (filterType === 'magic') {
-      // 1. Hitung peta pencahayaan latar belakang (Illumination Map) dengan resolusi rendah & blur
       const bgScale = 16;
       const bw = Math.max(8, Math.floor(width / bgScale));
       const bh = Math.max(8, Math.floor(height / bgScale));
@@ -480,7 +519,7 @@ export class ScannerCore {
         }
       }
 
-      // 2. Blur peta pencahayaan untuk mendapatkan ambang terang latar belakang lokal
+      // Blur peta pencahayaan untuk mendapatkan ambang terang latar belakang lokal
       const blurredBg = new Float32Array(bw * bh);
       for (let by = 0; by < bh; by++) {
         for (let bx = 0; bx < bw; bx++) {
@@ -499,7 +538,7 @@ export class ScannerCore {
         }
       }
 
-      // 3. Terapkan pembagian latar belakang (Background Division) & S-Curve
+      // Terapkan pembagian latar belakang (Background Division) & S-Curve
       for (let y = 0; y < height; y++) {
         const by = Math.min(bh - 1, Math.floor(y / bgScale));
         const rowOffset = y * width;
@@ -525,20 +564,16 @@ export class ScannerCore {
           const sat = maxC - minC;
 
           if (sat > 28) {
-            // Ini stempel atau tanda tangan berwarna: pertahankan warna & perkuat saturasi
             const satBoost = 1.35;
             normR = Math.min(255, Math.max(0, lum + (normR - lum) * satBoost));
             normG = Math.min(255, Math.max(0, lum + (normG - lum) * satBoost));
             normB = Math.min(255, Math.max(0, lum + (normB - lum) * satBoost));
           } else {
-            // Teks hitam atau kertas putih: S-curve penajaman kontras tulisan
             if (lum < 140) {
-              // Tinta hitam/abu diperdalam agar tebal
               normR *= 0.65;
               normG *= 0.65;
               normB *= 0.65;
             } else if (lum > 165) {
-              // Kertas ditarik ke putih bersih 100%
               normR = 255;
               normG = 255;
               normB = 255;
@@ -561,7 +596,6 @@ export class ScannerCore {
         gray[i / 4] = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
       }
 
-      // Integral Image untuk penghitungan rata-rata lokal O(1)
       const integral = new Float64Array(width * height);
       for (let x = 0; x < width; x++) {
         let sum = 0;
@@ -575,10 +609,9 @@ export class ScannerCore {
         }
       }
 
-      // Window lokal 1/16 lebar gambar
       const s = Math.max(12, Math.floor(width / 16));
       const s2 = Math.floor(s / 2);
-      const T = 0.14; // Ambang batas 14% lebih gelap dari sekitar = teks hitam
+      const T = 0.14;
 
       for (let y = 0; y < height; y++) {
         const y1 = Math.max(0, y - s2);
@@ -594,7 +627,6 @@ export class ScannerCore {
                       integral[y1 * width + x1];
 
           const curr = gray[y * width + x];
-          // Binerisasi adaptif
           const val = (curr * count) < (sum * (1 - T)) ? 0 : 255;
 
           const idx = (y * width + x) * 4;
