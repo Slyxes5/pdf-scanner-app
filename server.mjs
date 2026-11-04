@@ -11,6 +11,15 @@ const publicDir = path.join(__dirname, 'public');
 
 const PORT = process.env.PORT || 3000;
 
+// ========================================================
+// SHARED MULTI-DEVICE SESSION (Real-time HP ↔ PC Sync)
+// ========================================================
+const sharedSession = {
+  title: 'Scan-Dokumen',
+  pages: [], // { id, filter, dataUrl, createdAt }
+  lastUpdated: Date.now()
+};
+
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -44,10 +53,117 @@ const server = http.createServer((req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, DELETE',
       'Access-Control-Allow-Headers': 'Content-Type, X-Filename, X-Dpi'
     });
     return res.end();
+  }
+
+  // ========================================================
+  // SHARED SESSION SYNC API (HP ↔ PC Sync)
+  // ========================================================
+  if (req.url.startsWith('/api/session')) {
+    const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const endpoint = urlObj.pathname;
+
+    // GET /api/session -> Ambil state dokumen terkini
+    if (req.method === 'GET' && endpoint === '/api/session') {
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
+        'Access-Control-Allow-Origin': '*'
+      });
+      return res.end(JSON.stringify(sharedSession));
+    }
+
+    // POST /api/session/add-page -> Tambah lembar hasil scan dari HP/PC
+    if (req.method === 'POST' && endpoint === '/api/session/add-page') {
+      const chunks = [];
+      req.on('data', c => chunks.push(c));
+      req.on('end', () => {
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+          const pageId = body.id || `page-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+          sharedSession.pages.push({
+            id: pageId,
+            filter: body.filter || 'magic',
+            dataUrl: body.dataUrl,
+            createdAt: Date.now()
+          });
+          sharedSession.lastUpdated = Date.now();
+
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          });
+          return res.end(JSON.stringify({ success: true, count: sharedSession.pages.length, pageId, lastUpdated: sharedSession.lastUpdated }));
+        } catch (e) {
+          res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          return res.end(JSON.stringify({ error: e.message }));
+        }
+      });
+      return;
+    }
+
+    // POST /api/session/delete-page -> Hapus lembar dari session bersama
+    if (req.method === 'POST' && endpoint === '/api/session/delete-page') {
+      const chunks = [];
+      req.on('data', c => chunks.push(c));
+      req.on('end', () => {
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+          sharedSession.pages = sharedSession.pages.filter(p => p.id !== body.id);
+          sharedSession.lastUpdated = Date.now();
+
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          });
+          return res.end(JSON.stringify({ success: true, count: sharedSession.pages.length, lastUpdated: sharedSession.lastUpdated }));
+        } catch (e) {
+          res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          return res.end(JSON.stringify({ error: e.message }));
+        }
+      });
+      return;
+    }
+
+    // POST /api/session/update-page -> Update lembar (misal: setelah di-rotate)
+    if (req.method === 'POST' && endpoint === '/api/session/update-page') {
+      const chunks = [];
+      req.on('data', c => chunks.push(c));
+      req.on('end', () => {
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+          const target = sharedSession.pages.find(p => p.id === body.id);
+          if (target && body.dataUrl) {
+            target.dataUrl = body.dataUrl;
+            sharedSession.lastUpdated = Date.now();
+          }
+
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          });
+          return res.end(JSON.stringify({ success: true, count: sharedSession.pages.length, lastUpdated: sharedSession.lastUpdated }));
+        } catch (e) {
+          res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          return res.end(JSON.stringify({ error: e.message }));
+        }
+      });
+      return;
+    }
+
+    // POST /api/session/clear -> Reset lembaran
+    if (req.method === 'POST' && endpoint === '/api/session/clear') {
+      sharedSession.pages = [];
+      sharedSession.lastUpdated = Date.now();
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      });
+      return res.end(JSON.stringify({ success: true, count: 0, lastUpdated: sharedSession.lastUpdated }));
+    }
   }
 
   // ========================================================
@@ -188,6 +304,6 @@ server.listen(PORT, '0.0.0.0', () => {
   localIps.forEach(net => {
     console.log(`   👉 http://${net.address}:${PORT} (${net.name})`);
   });
-  console.log('\n💡 Fitur Aktif: Auto Camera Scan, Word ↔ PDF, Merge, Split, Compress');
+  console.log('\n💡 Fitur Aktif: Realtime Device Sync, Word ↔ PDF, Merge, Split, Compress');
   console.log('='.repeat(65));
 });

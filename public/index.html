@@ -37,9 +37,9 @@
           <span class="brand-name">SnapScanner</span>
         </div>
         <div class="topbar-actions">
-          <span class="status-pill">
-            <span class="status-dot"></span>
-            <span>Online</span>
+          <span class="status-pill" id="syncStatusPill" title="Sinkronisasi HP & PC Otomatis">
+            <span class="status-dot" id="syncStatusDot"></span>
+            <span id="syncStatusText">Sync Aktif</span>
           </span>
           <button class="icon-circle-btn" id="btnTopInfo" title="Akses Jaringan">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -572,9 +572,10 @@
       <button class="nav-item" id="navBtnTools" title="Alat PDF">
         <div class="nav-icon-wrap">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-            <line x1="8" y1="21" x2="16" y2="21"/>
-            <line x1="12" y1="17" x2="12" y2="21"/>
+            <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+            <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+            <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+            <rect x="3" y="14" width="7" height="7" rx="1.5"/>
           </svg>
         </div>
       </button>

@@ -495,14 +495,26 @@ document.getElementById('btnAddAnother').addEventListener('click', () => {
 
 function saveCurrentPage() {
   const pageId = `page-${Date.now()}`;
+  const dataUrl = state.filteredCanvas.toDataURL('image/jpeg', 0.88);
   state.pages.push({
     id: pageId,
     canvas: state.filteredCanvas,
-    filter: state.filter
+    filter: state.filter,
+    dataUrl: dataUrl
   });
 
   renderPagesGrid();
   showView('doc');
+
+  // Realtime Multi-Device Sync: Kirim ke server agar langsung muncul di Laptop/PC
+  fetch('/api/session/add-page', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: pageId, filter: state.filter, dataUrl: dataUrl })
+  }).then(r => r.json()).then(res => {
+    if (res.lastUpdated) state.lastSyncedAt = res.lastUpdated;
+    updateSyncBadge(state.pages.length);
+  }).catch(err => console.debug('Sync add page error:', err));
 }
 
 // -------------------------------------------------------------
@@ -535,7 +547,7 @@ function renderPagesGrid() {
       state.pages.forEach((p, idx) => {
         const thumb = document.createElement('img');
         thumb.className = 'recents-thumb';
-        thumb.src = p.canvas.toDataURL('image/jpeg', 0.5);
+        thumb.src = p.dataUrl || p.canvas.toDataURL('image/jpeg', 0.5);
         thumb.alt = `Halaman ${idx + 1}`;
         thumb.title = `Halaman ${idx + 1} - Klik untuk lihat`;
         thumb.style.cursor = 'pointer';
@@ -569,7 +581,7 @@ function renderPagesGrid() {
           </button>
         </div>
       </div>
-      <img src="${page.canvas.toDataURL('image/jpeg', 0.6)}" alt="Halaman ${index + 1}">
+      <img src="${page.dataUrl || page.canvas.toDataURL('image/jpeg', 0.6)}" alt="Halaman ${index + 1}">
     `;
     pagesGrid.appendChild(card);
   });
@@ -581,7 +593,17 @@ function renderPagesGrid() {
       const pageObj = state.pages.find(p => p.id === id);
       if (pageObj) {
         pageObj.canvas = ScannerCore.rotateCanvas(pageObj.canvas, 90);
+        pageObj.dataUrl = pageObj.canvas.toDataURL('image/jpeg', 0.88);
         renderPagesGrid();
+
+        // Realtime Sync: update lembar ke server
+        fetch('/api/session/update-page', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: pageObj.id, dataUrl: pageObj.dataUrl })
+        }).then(r => r.json()).then(res => {
+          if (res.lastUpdated) state.lastSyncedAt = res.lastUpdated;
+        }).catch(() => {});
       }
     });
   });
@@ -595,6 +617,16 @@ function renderPagesGrid() {
       if (state.pages.length === 0) {
         showView('home');
       }
+
+      // Realtime Sync: hapus lembar di server
+      fetch('/api/session/delete-page', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      }).then(r => r.json()).then(res => {
+        if (res.lastUpdated) state.lastSyncedAt = res.lastUpdated;
+        updateSyncBadge(state.pages.length);
+      }).catch(() => {});
     });
   });
 }
@@ -979,3 +1011,103 @@ window.addEventListener('resize', () => {
     setupCropView();
   }
 });
+
+// ========================================================
+// REALTIME MULTI-DEVICE SYNC (HP ↔ PC Realtime Sync)
+// ========================================================
+let isSyncing = false;
+
+function dataUrlToCanvas(dataUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const cvs = document.createElement('canvas');
+      cvs.width = img.width;
+      cvs.height = img.height;
+      const ctx = cvs.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      resolve(cvs);
+    };
+    img.onerror = () => {
+      const cvs = document.createElement('canvas');
+      cvs.width = 600;
+      cvs.height = 800;
+      resolve(cvs);
+    };
+    img.src = dataUrl;
+  });
+}
+
+function updateSyncBadge(count) {
+  const statusText = document.getElementById('syncStatusText');
+  const statusDot = document.getElementById('syncStatusDot');
+  if (statusText) {
+    statusText.textContent = count > 0 ? `Sync (${count} Hal)` : 'Sync Aktif';
+  }
+  if (statusDot) {
+    statusDot.style.background = '#d4fb38';
+    statusDot.style.boxShadow = '0 0 10px #d4fb38';
+  }
+}
+
+async function pollSharedSession() {
+  if (isSyncing) return;
+  isSyncing = true;
+  try {
+    const res = await fetch('/api/session', { cache: 'no-store' });
+    if (!res.ok) return;
+    const data = await res.json();
+
+    if (data.title && document.getElementById('docTitleInput')) {
+      const titleInput = document.getElementById('docTitleInput');
+      if (titleInput && titleInput !== document.activeElement && data.title !== titleInput.value) {
+        titleInput.value = data.title;
+      }
+    }
+
+    if (data.lastUpdated && data.lastUpdated > (state.lastSyncedAt || 0)) {
+      const serverPages = data.pages || [];
+      const localIds = state.pages.map(p => p.id).join(',');
+      const serverIds = serverPages.map(p => p.id).join(',');
+
+      if (localIds !== serverIds || state.pages.length !== serverPages.length) {
+        const updatedPages = [];
+        for (const sp of serverPages) {
+          const existing = state.pages.find(lp => lp.id === sp.id);
+          if (existing && existing.dataUrl === sp.dataUrl) {
+            updatedPages.push(existing);
+          } else {
+            const cvs = await dataUrlToCanvas(sp.dataUrl);
+            updatedPages.push({
+              id: sp.id,
+              canvas: cvs,
+              filter: sp.filter || 'magic',
+              dataUrl: sp.dataUrl
+            });
+          }
+        }
+        state.pages = updatedPages;
+        state.lastSyncedAt = data.lastUpdated;
+        renderPagesGrid();
+        updateSyncBadge(updatedPages.length);
+      } else {
+        state.lastSyncedAt = data.lastUpdated;
+      }
+    }
+  } catch (err) {
+    console.debug('Polling session error:', err);
+  } finally {
+    isSyncing = false;
+  }
+}
+
+// Polling interval setiap 1.5 detik & event visibility
+setInterval(pollSharedSession, 1500);
+window.addEventListener('focus', pollSharedSession);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) pollSharedSession();
+});
+
+// Sync awal saat aplikasi dimuat
+pollSharedSession();
+

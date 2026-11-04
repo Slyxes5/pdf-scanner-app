@@ -115,13 +115,12 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px 12px;
+  padding: 16px 20px 14px;
   position: sticky;
   top: 0;
   z-index: 40;
-  background: rgba(8, 10, 15, 0.85);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  background: #080a0f;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .brand {
@@ -273,7 +272,7 @@ body {
    1. HOME VIEW STYLING
    ============================================================ */
 .home-content {
-  padding: 10px 18px 125px;
+  padding: 14px 18px 160px;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -1128,7 +1127,7 @@ body {
    4. DOCUMENT & EXPORT VIEW STYLING
    ============================================================ */
 .doc-body-scroll {
-  padding: 14px 18px 125px;
+  padding: 14px 18px 160px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -1367,7 +1366,7 @@ body {
    5. VIEW 5: ALAT PDF (iLovePDF Style Suite)
    ============================================================ */
 .tools-content {
-  padding: 12px 18px 125px;
+  padding: 16px 18px 160px;
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -1938,11 +1937,96 @@ body {
   padding-top: 6px;
 }
 
-/* Responsive tweaks */
+/* ============================================================
+   RESPONSIVE DESIGN (TABLET & DESKTOP ENHANCEMENTS)
+   ============================================================ */
 @media (min-width: 521px) {
   #app {
     border-left: 1px solid var(--border-subtle);
     border-right: 1px solid var(--border-subtle);
     box-shadow: 0 0 80px rgba(0, 0, 0, 0.8);
+  }
+}
+
+@media (min-width: 768px) {
+  #app {
+    max-width: 1080px;
+    border-left: 1px solid var(--border-subtle);
+    border-right: 1px solid var(--border-subtle);
+    box-shadow: 0 0 100px rgba(0, 0, 0, 0.9);
+  }
+
+  .home-topbar {
+    padding: 20px 32px 18px;
+  }
+
+  .home-content {
+    padding: 24px 32px 160px;
+    gap: 28px;
+  }
+
+  .hero-card {
+    padding: 32px 36px;
+  }
+
+  .hero-title {
+    font-size: 2.3rem;
+  }
+
+  .hero-body {
+    gap: 28px;
+  }
+
+  .action-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+
+  .tools-content {
+    padding: 24px 32px 160px;
+    gap: 24px;
+  }
+
+  .tools-headline {
+    font-size: 2.2rem;
+  }
+
+  .category-scroll {
+    overflow-x: visible;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .tools-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+  }
+
+  .tool-card {
+    padding: 20px 18px;
+    min-height: 180px;
+  }
+
+  .doc-body-scroll {
+    padding: 24px 32px 160px;
+  }
+
+  .pages-grid {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 20px;
+  }
+
+  .bottom-nav {
+    max-width: 520px;
+    bottom: 24px;
+    height: 66px;
+  }
+
+  .tool-modal-sheet {
+    max-width: 640px;
+    margin: auto;
+    border-radius: 24px;
+    border: 1px solid var(--border-strong);
+    max-height: 85vh;
   }
 }
