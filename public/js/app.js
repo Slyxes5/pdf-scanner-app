@@ -1,9 +1,11 @@
 import { ScannerCore } from './scanner-core.js';
 import { PdfExporter } from './pdf-exporter.js';
+import { initializeDocumentWorkspace } from './document-workspace.js';
 import { openToolModal, closeToolModal, handleFilesSelected, executeActiveTool } from './pdf-tools.js';
 
 // Application State
 const state = {
+  importQueue: [],
   pages: [],             // { id, canvas, filter }
   rawImage: null,        // HTMLImageElement atau ImageBitmap asli
   workingCanvas: null,   // Canvas gambar asli yang sedang diedit
@@ -33,6 +35,7 @@ const loupeCanvas = document.getElementById('loupeCanvas');
 const loupeCtx = loupeCanvas.getContext('2d');
 const enhancePreview = document.getElementById('enhancePreview');
 const pagesGrid = document.getElementById('pagesGrid');
+let documentWorkspace;
 
 // Switch Views
 function showView(name) {
@@ -81,19 +84,37 @@ cameraInput.addEventListener('change', handleFileSelected);
 fileInput.addEventListener('change', handleFileSelected);
 
 function handleFileSelected(e) {
-  const file = e.target.files?.[0];
-  if (!file) return;
+  const files = [...(e.target.files || [])];
+  e.target.value = '';
+  if (!files.length) return;
+  if (files.length + state.pages.length > 30) {
+    alert('Maksimum 30 halaman per sesi. Pilih lebih sedikit foto.');
+    return;
+  }
+  if (files.some(file => !file.type.startsWith('image/') || file.size > 25 * 1024 * 1024)) {
+    alert('Pilih berkas gambar, maksimum 25 MB per foto.');
+    return;
+  }
+  state.importQueue = files;
+  loadNextQueuedImage();
+}
 
+function loadNextQueuedImage() {
+  const file = state.importQueue.shift();
+  if (!file) return;
   const reader = new FileReader();
   reader.onload = (event) => {
     const img = new Image();
     img.onload = () => {
       loadNewImage(img);
+      document.getElementById('cropQueueTitle').textContent = state.importQueue.length
+        ? `Sesuaikan · ${state.importQueue.length} foto berikutnya` : 'Sesuaikan Sudut';
     };
+    img.onerror = () => { state.importQueue = []; alert('Foto tidak bisa dibaca. Gunakan JPEG, PNG, atau WebP.'); showView(state.pages.length ? 'doc' : 'home'); };
     img.src = event.target.result;
   };
+  reader.onerror = () => { state.importQueue = []; alert('Berkas foto gagal dibaca.'); };
   reader.readAsDataURL(file);
-  e.target.value = ''; // Reset input agar bisa pilih file yang sama
 }
 
 function loadNewImage(img) {
@@ -488,33 +509,47 @@ document.getElementById('btnSavePage').addEventListener('click', () => {
 });
 
 document.getElementById('btnAddAnother').addEventListener('click', () => {
-  saveCurrentPage();
+  if (saveCurrentPage()) return;
   // Buka kamera/pilih foto untuk halaman berikutnya
   cameraInput.click();
 });
 
 function saveCurrentPage() {
-  const pageId = `page-${Date.now()}`;
+  if (!state.filteredCanvas || state.pages.length >= 30) {
+    alert('Maksimum 30 halaman per sesi. Ekspor dokumen sebelum menambah halaman.');
+    return true;
+  }
+  const pageId = `page-${crypto.randomUUID ? crypto.randomUUID() : Date.now()}`;
   const dataUrl = state.filteredCanvas.toDataURL('image/jpeg', 0.88);
+  const metadata = {
+    pageSize: document.getElementById('defaultPageSize').value,
+    category: document.getElementById('documentMode').value === 'application' ? document.getElementById('newPageCategory').value : 'other',
+  };
   state.pages.push({
     id: pageId,
     canvas: state.filteredCanvas,
     filter: state.filter,
-    dataUrl: dataUrl
+    dataUrl: dataUrl,
+    ...metadata
   });
 
   renderPagesGrid();
   showView('doc');
 
   // Realtime Multi-Device Sync: Kirim ke server agar langsung muncul di Laptop/PC
-  fetch('/api/session/add-page', {
+  sendSessionChange('/api/session/add-page', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: pageId, filter: state.filter, dataUrl: dataUrl })
+    body: JSON.stringify({ id: pageId, filter: state.filter, dataUrl: dataUrl, ...metadata })
   }).then(r => r.json()).then(res => {
     if (res.lastUpdated) state.lastSyncedAt = res.lastUpdated;
     updateSyncBadge(state.pages.length);
   }).catch(err => console.debug('Sync add page error:', err));
+  if (state.importQueue.length) {
+    loadNextQueuedImage();
+    return true;
+  }
+  return false;
 }
 
 // -------------------------------------------------------------
@@ -594,10 +629,11 @@ function renderPagesGrid() {
       if (pageObj) {
         pageObj.canvas = ScannerCore.rotateCanvas(pageObj.canvas, 90);
         pageObj.dataUrl = pageObj.canvas.toDataURL('image/jpeg', 0.88);
+        pageObj.ocr = null;
         renderPagesGrid();
 
         // Realtime Sync: update lembar ke server
-        fetch('/api/session/update-page', {
+        sendSessionChange('/api/session/update-page', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: pageObj.id, dataUrl: pageObj.dataUrl })
@@ -619,7 +655,7 @@ function renderPagesGrid() {
       }
 
       // Realtime Sync: hapus lembar di server
-      fetch('/api/session/delete-page', {
+      sendSessionChange('/api/session/delete-page', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id })
@@ -629,6 +665,7 @@ function renderPagesGrid() {
       }).catch(() => {});
     });
   });
+  documentWorkspace?.render();
 }
 
 // Tombol tambah halaman dari document view
@@ -641,8 +678,9 @@ document.getElementById('btnDocAddGallery').addEventListener('click', () => {
 
 // Ekspor PDF
 document.getElementById('btnExportPdf').addEventListener('click', async () => {
-  if (state.pages.length === 0) {
-    alert("Belum ada halaman dokumen yang discan.");
+  const pages = documentWorkspace.exportPages();
+  if (pages.length === 0) {
+    alert('Belum ada halaman untuk pilihan ekspor ini. Tambahkan scan atau pilih jenis berkas lain.');
     return;
   }
 
@@ -652,9 +690,9 @@ document.getElementById('btnExportPdf').addEventListener('click', async () => {
 
   try {
     const docTitle = document.getElementById('docTitleInput').value.trim() || 'Scan-Dokumen';
-    const filename = `${docTitle}-${new Date().toISOString().slice(0, 10)}.pdf`;
+    const filename = `${docTitle}${documentWorkspace.exportSuffix()}-${new Date().toISOString().slice(0, 10)}.pdf`;
 
-    const { blob } = await PdfExporter.exportToPdf(state.pages, {
+    const { blob } = await PdfExporter.exportToPdf(pages, {
       filename,
       pageSize: 'a4',
       quality: 0.90
@@ -676,6 +714,7 @@ document.getElementById('btnExportPdf').addEventListener('click', async () => {
 
 // Navigation & Back Buttons
 document.getElementById('btnCropBack')?.addEventListener('click', () => {
+  state.importQueue = [];
   if (state.pages.length > 0) {
     showView('doc');
   } else {
@@ -700,7 +739,7 @@ document.getElementById('btnDocBack')?.addEventListener('click', () => {
 // Copy Helpers for Tailscale & Wi-Fi URL
 document.querySelectorAll('.btn-copy').forEach(btn => {
   btn.addEventListener('click', () => {
-    const url = btn.dataset.url;
+    const url = btn.hasAttribute('data-current-url') ? location.origin : btn.dataset.url;
     navigator.clipboard.writeText(url).then(() => {
       const orig = btn.textContent;
       btn.textContent = 'Tersalin';
@@ -762,6 +801,7 @@ document.querySelectorAll('.cat-pill').forEach(pill => {
 document.querySelectorAll('.tool-card').forEach(card => {
   card.addEventListener('click', () => {
     const toolId = card.dataset.tool;
+    if (card.getAttribute('aria-disabled') === 'true') return;
     if (toolId) openToolModal(toolId);
   });
 });
@@ -1016,6 +1056,40 @@ window.addEventListener('resize', () => {
 // REALTIME MULTI-DEVICE SYNC (HP ↔ PC Realtime Sync)
 // ========================================================
 let isSyncing = false;
+let pendingSessionChanges = 0;
+let sessionSyncFailed = false;
+let sessionETag = null;
+let sessionRevision = 0;
+
+document.getElementById('docTitleInput').addEventListener('change', event => {
+  sendSessionChange('/api/session/update-title', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: event.target.value }),
+  }).then(response => response.json()).then(result => {
+    state.lastSyncedAt = result.lastUpdated;
+  }).catch(() => {});
+});
+
+async function sendSessionChange(url, options) {
+  sessionRevision++;
+  pendingSessionChanges++;
+  try {
+    const response = await fetch(url, options);
+    if (!response.ok) {
+      const result = await response.json();
+      throw new Error(result.error || 'Halaman belum tersimpan di server.');
+    }
+    return response;
+  } catch (error) {
+    sessionSyncFailed = true;
+    const status = document.getElementById('syncStatusText');
+    if (status) status.textContent = 'Belum tersimpan';
+    alert(`${error.message}\nEkspor PDF dari perangkat ini sebelum menutup halaman.`);
+    throw error;
+  } finally {
+    pendingSessionChanges--;
+  }
+}
 
 function dataUrlToCanvas(dataUrl) {
   return new Promise((resolve) => {
@@ -1051,12 +1125,15 @@ function updateSyncBadge(count) {
 }
 
 async function pollSharedSession() {
-  if (isSyncing) return;
+  if (isSyncing || pendingSessionChanges || sessionSyncFailed) return;
   isSyncing = true;
+  const revision = sessionRevision;
   try {
-    const res = await fetch('/api/session', { cache: 'no-store' });
+    const res = await fetch('/api/session', { cache: 'no-store', headers: sessionETag ? { 'If-None-Match': sessionETag } : {} });
     if (!res.ok) return;
+    sessionETag = res.headers.get('etag');
     const data = await res.json();
+    if (revision !== sessionRevision || pendingSessionChanges) { sessionETag = null; return; }
 
     if (data.title && document.getElementById('docTitleInput')) {
       const titleInput = document.getElementById('docTitleInput');
@@ -1070,22 +1147,26 @@ async function pollSharedSession() {
       const localIds = state.pages.map(p => p.id).join(',');
       const serverIds = serverPages.map(p => p.id).join(',');
 
-      if (localIds !== serverIds || state.pages.length !== serverPages.length) {
+      if (localIds !== serverIds || state.pages.length !== serverPages.length || serverPages.some((page, index) =>
+        page.dataUrl !== state.pages[index]?.dataUrl || page.pageSize !== state.pages[index]?.pageSize ||
+        page.category !== state.pages[index]?.category || JSON.stringify(page.ocr) !== JSON.stringify(state.pages[index]?.ocr))) {
         const updatedPages = [];
         for (const sp of serverPages) {
           const existing = state.pages.find(lp => lp.id === sp.id);
           if (existing && existing.dataUrl === sp.dataUrl) {
-            updatedPages.push(existing);
+            updatedPages.push({ ...existing, pageSize: sp.pageSize, category: sp.category, ocr: sp.ocr });
           } else {
             const cvs = await dataUrlToCanvas(sp.dataUrl);
             updatedPages.push({
               id: sp.id,
               canvas: cvs,
               filter: sp.filter || 'magic',
-              dataUrl: sp.dataUrl
+              dataUrl: sp.dataUrl,
+              pageSize: sp.pageSize, category: sp.category, ocr: sp.ocr
             });
           }
         }
+        if (revision !== sessionRevision || pendingSessionChanges) { sessionETag = null; return; }
         state.pages = updatedPages;
         state.lastSyncedAt = data.lastUpdated;
         renderPagesGrid();
@@ -1109,5 +1190,29 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // Sync awal saat aplikasi dimuat
+documentWorkspace = initializeDocumentWorkspace(state, {
+  render: renderPagesGrid,
+  sync: async (url, body) => {
+    const response = await sendSessionChange(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    return response.json();
+  },
+});
+renderPagesGrid();
 pollSharedSession();
+
+document.querySelectorAll('.network-link').forEach(link => { link.textContent = location.origin; });
+fetch('/api/capabilities').then(response => response.json()).then(capabilities => {
+  if (capabilities.serverTools) return;
+  for (const tool of ['word-to-pdf', 'pdf-to-word', 'pdf-to-images', 'compress-pdf']) {
+    const card = document.querySelector(`[data-tool="${tool}"]`);
+    if (!card) continue;
+    card.setAttribute('aria-disabled', 'true');
+    card.style.opacity = '0.5';
+    card.style.cursor = 'not-allowed';
+    const description = card.querySelector('.tool-card-body p');
+    if (description) description.textContent = 'Belum tersedia di server ini. Scan, ekspor, gabung, dan pisah PDF tetap tersedia.';
+  }
+}).catch(() => {});
 

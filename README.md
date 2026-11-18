@@ -2,6 +2,28 @@
 
 Aplikasi Web Scanner Dokumen otomatis dari kamera HP yang langsung menghasilkan berkas PDF berstandar A4 dengan tampilan lurus, jernih, dan rapi seperti CamScanner.
 
+## OCR, multi-page import, and application documents
+
+- Select multiple gallery photos (up to the remaining 30-page session capacity). Review the crop and filter of each photo before saving; canceling crop discards the remaining queue, while saved pages stay available.
+- Each page supports A4, Letter, or original image aspect ratio. A4 and Letter follow portrait/landscape orientation and fit the entire image within 5 mm margins without stretching. Original ratio uses a nominal 150 DPI, not a measurement of the physical paper. Click a page thumbnail to preview the PDF layout.
+- Move pages up/down. Application mode labels pages as CV, cover letter, diploma, transcript, certificate, identity, or other. Sort explicitly by that order, then export everything together or one category at a time. Changing mode does not reorder or alter scans.
+- Run Indonesian + English OCR explicitly. Search filters the page list and shows matching OCR text; it does not change the exported pages. The PDF includes invisible text at recognized word positions over the scan image. OCR can misread text; check the expandable results. Rotating a saved page invalidates its OCR until recognition runs again.
+- Images, category, size, order, and OCR results share the existing session persistence/sync. Mode and default options are preferences saved in the current browser. Existing sessions without metadata default to A4 and Other.
+- OCR runs in the browser. Engine and language models are served locally; no document is sent to an external OCR service. Existing shared-session image/OCR sync to your own scanner server still applies.
+
+`npm install` prepares local OCR assets automatically. If install scripts are disabled, run `npm run prepare:ocr`. Generated files in `public/assets/ocr/` are ignored by Git; include this directory when packaging a release. OCR adds approximately 39 MiB to the static assets and uses device RAM/CPU during recognition.
+
+Verification (isolated sessions, no saved user scans modified):
+
+```powershell
+node --test test/server.test.mjs test/session-metadata.test.mjs
+$env:BROWSER_EXECUTABLE = 'C:/Program Files/Google/Chrome/Application/chrome.exe'
+node test/browser-smoke.mjs
+node test/scanner-workflow.mjs
+```
+
+The workflow check imports three generated images, exercises actual local OCR and search, mixed page sizes, application ordering, desktop sync/reload, and invalidation after rotation. It leaves synthetic PDFs/screenshots in a temporary directory printed by the script. Physical camera behavior still needs a phone check.
+
 ---
 
 ## ✨ Fitur Utama

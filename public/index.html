@@ -21,7 +21,7 @@
   <div id="app">
     <!-- Hidden File Inputs untuk Kamera & Galeri Scanner -->
     <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display: none;">
-    <input type="file" id="fileInput" accept="image/*" style="display: none;">
+    <input type="file" id="fileInput" accept="image/*" multiple style="display: none;">
 
     <!-- ========================================================
          VIEW 1: HOME (SCANNER DASHBOARD)
@@ -179,17 +179,10 @@
           <div class="network-rows">
             <div class="network-row">
               <div class="network-details">
-                <span class="network-name">Tailscale (Bisa dari mana saja)</span>
-                <span class="network-link">http://100.78.9.65:3000</span>
+                <span class="network-name">Alamat Scanner</span>
+                <span class="network-link">Alamat halaman ini</span>
               </div>
-              <button class="btn-copy-pill btn-copy" data-url="http://100.78.9.65:3000">Salin</button>
-            </div>
-            <div class="network-row">
-              <div class="network-details">
-                <span class="network-name">Wi-Fi Lokal</span>
-                <span class="network-link">http://192.168.1.20:3000</span>
-              </div>
-              <button class="btn-copy-pill btn-copy" data-url="http://192.168.1.20:3000">Salin</button>
+              <button class="btn-copy-pill btn-copy" data-current-url>Salin</button>
             </div>
           </div>
         </div>
@@ -216,7 +209,7 @@
             <polyline points="12 19 5 12 12 5"/>
           </svg>
         </button>
-        <span class="crop-title">Sesuaikan Sudut</span>
+        <span class="crop-title" id="cropQueueTitle">Sesuaikan Sudut</span>
         <button id="btnWarpDone" class="btn-volt-pill">
           <span>Lanjut</span>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
@@ -344,6 +337,37 @@
           </div>
         </div>
 
+        <div class="doc-card-input document-settings">
+          <label for="documentMode">Mode dokumen</label>
+          <select id="documentMode"><option value="general">Dokumen biasa</option><option value="application">Berkas lamaran</option></select>
+          <label for="defaultPageSize">Ukuran untuk scan berikutnya</label>
+          <div class="document-control-row">
+            <select id="defaultPageSize"><option value="a4">A4</option><option value="letter">Letter</option><option value="original">Rasio asli</option></select>
+            <button id="btnApplyPageSize" class="toolbar-pill">Terapkan ke semua</button>
+          </div>
+          <p class="document-hint">Proporsi tetap, tanpa dipotong atau ditarik. A4/Letter memakai margin putih 5 mm. Rasio asli mengikuti gambar, bukan ukuran fisik kertas.</p>
+          <div id="applicationControls" hidden>
+            <label for="newPageCategory">Jenis untuk scan berikutnya</label>
+            <select id="newPageCategory"><option value="cv">CV</option><option value="letter">Surat lamaran</option><option value="diploma">Ijazah</option><option value="transcript">Transkrip</option><option value="certificate">Sertifikat</option><option value="identity">Identitas</option><option value="other">Lainnya</option></select>
+            <button id="btnSortApplication" class="toolbar-pill">Susun sesuai jenis berkas</button>
+            <p id="applicationSummary" class="document-hint"></p>
+            <label for="exportCategory">Isi PDF yang diekspor</label>
+            <select id="exportCategory"><option value="all">Gabung semua berkas</option><option value="cv">CV saja</option><option value="letter">Surat lamaran saja</option><option value="diploma">Ijazah saja</option><option value="transcript">Transkrip saja</option><option value="certificate">Sertifikat saja</option><option value="identity">Identitas saja</option><option value="other">Lainnya saja</option></select>
+          </div>
+        </div>
+
+        <div class="doc-card-input document-settings">
+          <label for="documentSearch">OCR & pencarian teks</label>
+          <div class="document-control-row">
+            <button id="btnRunOcr" class="toolbar-pill highlight">Baca teks semua halaman</button>
+            <button id="btnCancelOcr" class="toolbar-pill" hidden>Batalkan</button>
+          </div>
+          <p class="document-hint">Bahasa Indonesia + English, diproses di perangkat ini. PDF tetap menampilkan scan asli dengan teks pencarian tersembunyi. Periksa hasil OCR sebelum digunakan.</p>
+          <p id="ocrStatus" role="status" aria-live="polite" class="document-hint">Belum ada teks yang dibaca.</p>
+          <input id="documentSearch" type="search" placeholder="Cari teks pada hasil scan..." aria-label="Cari teks hasil OCR">
+          <p id="searchStatus" class="document-hint" role="status" aria-live="polite"></p>
+        </div>
+
         <div class="section-title-row">
           <h2>Daftar Lembaran</h2>
           <span class="section-subtext">Urutan Halaman</span>
@@ -370,7 +394,7 @@
         </div>
 
         <button id="btnExportPdf" class="btn-volt-full">
-          <span>Unduh Berkas PDF (A4)</span>
+          <span>Unduh Berkas PDF</span>
           <div class="btn-arrow-circle dark">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -381,6 +405,12 @@
         </button>
       </div>
     </section>
+
+    <dialog id="pagePreviewDialog" class="page-preview-dialog">
+      <div class="document-control-row"><h2 id="pagePreviewTitle">Preview halaman</h2><button id="btnClosePagePreview" class="toolbar-pill">Tutup</button></div>
+      <p class="document-hint">Preview sesuai ukuran PDF, dengan proporsi dan margin yang sama.</p>
+      <canvas id="pagePreviewCanvas"></canvas>
+    </dialog>
 
     <!-- ========================================================
          VIEW 5: ALAT PDF (iLovePDF SUITE)

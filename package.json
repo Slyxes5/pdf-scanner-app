@@ -5,6 +5,8 @@
   "type": "module",
   "main": "server.mjs",
   "scripts": {
+    "postinstall": "node scripts/prepare-ocr.mjs",
+    "prepare:ocr": "node scripts/prepare-ocr.mjs",
     "start": "node server.mjs",
     "dev": "node server.mjs"
   },
@@ -19,8 +21,11 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@tesseract.js-data/eng": "1.0.0",
+    "@tesseract.js-data/ind": "1.0.0",
     "mammoth": "^1.13.0",
     "pdf-lib": "^1.17.1",
-    "puppeteer-core": "^25.16.0"
+    "puppeteer-core": "^25.16.0",
+    "tesseract.js": "7.0.0"
   }
 }

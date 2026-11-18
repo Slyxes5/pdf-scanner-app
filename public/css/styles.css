@@ -1237,10 +1237,40 @@ body {
 .page-thumb-card img {
   width: 100%;
   aspect-ratio: 1 / 1.414;
-  object-fit: cover;
+  object-fit: contain;
   border-radius: var(--radius-xs);
   background: #fff;
 }
+
+.document-settings { gap: 10px; scroll-margin-top: 80px; }
+#view-document { scroll-padding: 80px 0 110px; }
+.document-settings label, .page-settings label { font-size: 0.78rem; color: var(--text-secondary); }
+.document-settings select, .document-settings input, .page-settings select {
+  width: 100%; min-width: 0; min-height: 42px; padding: 8px;
+  color: var(--text-primary); background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-strong); border-radius: 8px; font: inherit; font-size: 0.82rem;
+}
+.document-settings input, .ocr-text { user-select: text; -webkit-user-select: text; }
+.document-hint { font-size: 0.75rem; line-height: 1.6; color: var(--text-secondary); }
+.document-control-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.document-control-row > select { flex: 1; }
+.document-control-row button { min-height: 40px; padding: 8px 12px; font-size: 0.75rem; }
+.page-settings { display: grid; gap: 8px; min-width: 0; }
+.page-settings label { display: grid; gap: 5px; }
+.page-settings .document-control-row { gap: 4px; }
+.page-settings .toolbar-pill { padding: 6px 9px; flex: 1; }
+.page-settings summary { cursor: pointer; font-size: 0.8rem; color: var(--accent-neon); }
+.ocr-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.8rem; line-height: 1.6; max-height: 240px; overflow: auto; margin-top: 8px; }
+.ocr-text mark { background: var(--accent-neon); color: var(--text-on-neon); }
+.page-thumb-card[hidden], [hidden] { display: none !important; }
+.page-thumb-card img[role="button"] { cursor: zoom-in; }
+button:disabled { opacity: 0.45; cursor: default; }
+.document-settings :focus-visible, .page-settings :focus-visible, .page-thumb-card img:focus-visible { outline: 2px solid var(--accent-neon); outline-offset: 3px; }
+#applicationControls > * + * { margin-top: 10px; }
+.page-preview-dialog { margin: auto; width: min(94vw, 700px); max-height: 92dvh; overflow: auto; border: 1px solid var(--border-strong); border-radius: 18px; padding: 16px; color: var(--text-primary); background: var(--bg-surface); }
+.page-preview-dialog::backdrop { background: rgba(0, 0, 0, 0.8); }
+.page-preview-dialog h2 { font-size: 1rem; flex: 1; }
+.page-preview-dialog canvas { display: block; max-width: 100%; max-height: 72dvh; width: auto; height: auto; margin: 12px auto 0; }
 
 .doc-add-row {
   display: flex;

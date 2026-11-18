@@ -2,3 +2,8 @@ node_modules/
 *.log
 test-*.png
 sneakify-*.png
+data/
+.env
+.env.*
+!.env.example
+public/assets/ocr/

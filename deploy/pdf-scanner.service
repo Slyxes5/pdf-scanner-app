@@ -1,0 +1,36 @@
+[Unit]
+Description=Private PDF Scanner
+After=network.target
+
+[Service]
+Type=simple
+User=pdf-scanner
+Group=pdf-scanner
+WorkingDirectory=/opt/pdf-scanner/app
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=3000
+Environment=DATA_DIR=/var/lib/pdf-scanner
+Environment=ENABLE_SERVER_TOOLS=false
+EnvironmentFile=-/etc/pdf-scanner.conf
+ExecStart=/opt/pdf-scanner/node-runtime/bin/node --max-old-space-size=256 server.mjs
+Restart=on-failure
+RestartSec=5
+StateDirectory=pdf-scanner
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+MemoryHigh=256M
+MemoryMax=384M
+TasksMax=64
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target
