@@ -541,8 +541,8 @@ function saveCurrentPage() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id: pageId, filter: state.filter, dataUrl: dataUrl, ...metadata })
-  }).then(r => r.json()).then(res => {
-    if (res.lastUpdated) state.lastSyncedAt = res.lastUpdated;
+  }).then(r => r ? r.json() : null).then(res => {
+    if (res && res.lastUpdated) state.lastSyncedAt = res.lastUpdated;
     updateSyncBadge(state.pages.length);
   }).catch(err => console.debug('Sync add page error:', err));
   if (state.importQueue.length) {
@@ -637,8 +637,8 @@ function renderPagesGrid() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: pageObj.id, dataUrl: pageObj.dataUrl })
-        }).then(r => r.json()).then(res => {
-          if (res.lastUpdated) state.lastSyncedAt = res.lastUpdated;
+        }).then(r => r ? r.json() : null).then(res => {
+          if (res && res.lastUpdated) state.lastSyncedAt = res.lastUpdated;
         }).catch(() => {});
       }
     });
@@ -659,8 +659,8 @@ function renderPagesGrid() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id })
-      }).then(r => r.json()).then(res => {
-        if (res.lastUpdated) state.lastSyncedAt = res.lastUpdated;
+      }).then(r => r ? r.json() : null).then(res => {
+        if (res && res.lastUpdated) state.lastSyncedAt = res.lastUpdated;
         updateSyncBadge(state.pages.length);
       }).catch(() => {});
     });
@@ -1058,29 +1058,41 @@ window.addEventListener('resize', () => {
 let isSyncing = false;
 let pendingSessionChanges = 0;
 let sessionSyncFailed = false;
+let sessionSyncDisabled = false;
 let sessionETag = null;
 let sessionRevision = 0;
 
 document.getElementById('docTitleInput').addEventListener('change', event => {
+  if (sessionSyncDisabled) return;
   sendSessionChange('/api/session/update-title', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title: event.target.value }),
-  }).then(response => response.json()).then(result => {
-    state.lastSyncedAt = result.lastUpdated;
+  }).then(response => response && response.json()).then(result => {
+    if (result) state.lastSyncedAt = result.lastUpdated;
   }).catch(() => {});
 });
 
 async function sendSessionChange(url, options) {
+  if (sessionSyncDisabled) return null;
   sessionRevision++;
   pendingSessionChanges++;
   try {
     const response = await fetch(url, options);
     if (!response.ok) {
-      const result = await response.json();
+      if (response.status === 404) {
+        sessionSyncDisabled = true;
+        const status = document.getElementById('syncStatusText');
+        if (status) status.textContent = 'Mode Lokal';
+        const statusDot = document.getElementById('syncStatusDot');
+        if (statusDot) { statusDot.style.background = '#888'; statusDot.style.boxShadow = 'none'; }
+        return null;
+      }
+      const result = await response.json().catch(() => ({}));
       throw new Error(result.error || 'Halaman belum tersimpan di server.');
     }
     return response;
   } catch (error) {
+    if (sessionSyncDisabled) return null;
     sessionSyncFailed = true;
     const status = document.getElementById('syncStatusText');
     if (status) status.textContent = 'Belum tersimpan';
@@ -1125,12 +1137,21 @@ function updateSyncBadge(count) {
 }
 
 async function pollSharedSession() {
-  if (isSyncing || pendingSessionChanges || sessionSyncFailed) return;
+  if (isSyncing || pendingSessionChanges || sessionSyncFailed || sessionSyncDisabled) return;
   isSyncing = true;
   const revision = sessionRevision;
   try {
     const res = await fetch('/api/session', { cache: 'no-store', headers: sessionETag ? { 'If-None-Match': sessionETag } : {} });
-    if (!res.ok) return;
+    if (!res.ok) {
+      if (res.status === 404) {
+        sessionSyncDisabled = true;
+        const status = document.getElementById('syncStatusText');
+        if (status) status.textContent = 'Mode Lokal';
+        const statusDot = document.getElementById('syncStatusDot');
+        if (statusDot) { statusDot.style.background = '#888'; statusDot.style.boxShadow = 'none'; }
+      }
+      return;
+    }
     sessionETag = res.headers.get('etag');
     const data = await res.json();
     if (revision !== sessionRevision || pendingSessionChanges) { sessionETag = null; return; }
@@ -1196,7 +1217,7 @@ documentWorkspace = initializeDocumentWorkspace(state, {
     const response = await sendSessionChange(url, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     });
-    return response.json();
+    return response ? response.json() : null;
   },
 });
 renderPagesGrid();
