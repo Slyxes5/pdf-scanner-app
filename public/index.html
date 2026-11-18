@@ -692,6 +692,32 @@
     </div>
   </div>
 
+  <!-- ========================================================
+       TOAST NOTIFICATION (DOWNLOAD SELESAI FEEDBACK)
+       ======================================================== -->
+  <div id="toastNotification" class="toast-notification" role="status" aria-live="polite">
+    <div class="toast-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+        <polyline points="22 4 12 14.01 9 11.01"/>
+      </svg>
+    </div>
+    <div class="toast-content">
+      <span class="toast-title" id="toastTitle">Unduhan Selesai! 🎉</span>
+      <span class="toast-message" id="toastMessage">Berkas PDF berhasil disimpan di folder Download.</span>
+    </div>
+    <div class="toast-actions">
+      <button id="btnToastOpen" class="toast-action-btn" type="button">Buka</button>
+      <button id="btnToastShare" class="toast-action-btn icon-only" type="button" title="Bagikan">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+        </svg>
+      </button>
+      <button id="btnToastClose" class="toast-close-btn" type="button" title="Tutup">✕</button>
+    </div>
+  </div>
+
   <script type="module" src="/js/app.js"></script>
 </body>
 </html>

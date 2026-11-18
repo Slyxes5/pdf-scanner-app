@@ -769,8 +769,9 @@ document.getElementById('btnExportPdf').addEventListener('click', async () => {
   }
 
   const btn = document.getElementById('btnExportPdf');
+  const origBtnHtml = btn.innerHTML;
   btn.disabled = true;
-  btn.textContent = 'Membuat PDF...';
+  btn.innerHTML = '<span>Membuat PDF...</span>';
 
   try {
     const docTitle = document.getElementById('docTitleInput').value.trim() || 'Scan-Dokumen';
@@ -782,17 +783,104 @@ document.getElementById('btnExportPdf').addEventListener('click', async () => {
       quality: 0.90
     });
 
-    // Coba Share API di HP terlebih dahulu (WhatsApp/Files), fallback ke download
-    const shared = await PdfExporter.sharePdf(blob, filename).catch(() => false);
-    if (!shared) {
-      PdfExporter.downloadPdf(blob, filename);
-    }
+    // 1. Picu unduh berkas ke folder Download perangkat
+    PdfExporter.downloadPdf(blob, filename);
+
+    // 2. Beri visual feedback pada tombol
+    btn.innerHTML = '<span>✅ Selesai Diunduh!</span>';
+    btn.style.background = '#22c55e';
+    btn.style.color = '#fff';
+
+    // 3. Tampilkan Banner Notifikasi Selesai (Toast)
+    const sizeKb = Math.round(blob.size / 1024);
+    const sizeStr = sizeKb > 1024 ? `${(sizeKb / 1024).toFixed(1)} MB` : `${sizeKb} KB`;
+
+    showDownloadToast({
+      title: 'Unduhan Selesai! 🎉',
+      message: `${filename} (${sizeStr}) tersimpan di folder Download.`,
+      blob,
+      filename
+    });
+
+    // Kembalikan tombol setelah 3.5 detik
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.innerHTML = origBtnHtml;
+      btn.style.background = '';
+      btn.style.color = '';
+    }, 3500);
+
   } catch (err) {
     console.error("Gagal ekspor PDF:", err);
     alert("Terjadi kesalahan saat mengekspor PDF: " + err.message);
-  } finally {
     btn.disabled = false;
-    btn.textContent = 'Unduh PDF';
+    btn.innerHTML = origBtnHtml;
+    btn.style.background = '';
+    btn.style.color = '';
+  }
+});
+
+let toastTimer = null;
+export function showDownloadToast({ title, message, blob, filename }) {
+  const toast = document.getElementById('toastNotification');
+  if (!toast) return;
+
+  const titleEl = document.getElementById('toastTitle');
+  const msgEl = document.getElementById('toastMessage');
+  const btnOpen = document.getElementById('btnToastOpen');
+  const btnShare = document.getElementById('btnToastShare');
+  const btnClose = document.getElementById('btnToastClose');
+
+  if (titleEl) titleEl.textContent = title || 'Unduhan Selesai! 🎉';
+  if (msgEl) msgEl.textContent = message || 'Berkas berhasil disimpan.';
+
+  // Tombol Buka: langsung buka PDF di viewer / tab baru HP tanpa perlu cari di file manager
+  if (btnOpen) {
+    if (blob) {
+      btnOpen.style.display = 'inline-flex';
+      btnOpen.onclick = () => {
+        const fileUrl = URL.createObjectURL(blob);
+        window.open(fileUrl, '_blank');
+      };
+    } else {
+      btnOpen.style.display = 'none';
+    }
+  }
+
+  // Tombol Bagikan ke WhatsApp / Drive / dsb
+  if (btnShare) {
+    if (blob && navigator.share && navigator.canShare) {
+      btnShare.style.display = 'inline-flex';
+      btnShare.onclick = () => {
+        PdfExporter.sharePdf(blob, filename).catch(() => {});
+      };
+    } else {
+      btnShare.style.display = 'none';
+    }
+  }
+
+  if (btnClose) {
+    btnClose.onclick = () => {
+      toast.classList.remove('show');
+    };
+  }
+
+  toast.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast.classList.remove('show');
+  }, 6500);
+}
+
+// Global listener untuk download di PDF Tools
+document.addEventListener('click', (e) => {
+  const dlBtn = e.target.closest('.btn-download-result, .gallery-dl-btn');
+  if (dlBtn) {
+    const filename = dlBtn.getAttribute('download') || 'berkas.pdf';
+    showDownloadToast({
+      title: 'Unduhan Selesai! 🎉',
+      message: `${filename} tersimpan di folder Download.`,
+    });
   }
 });
 
