@@ -17,9 +17,10 @@
 
 export class ScannerCore {
   /**
-   * Deteksi 4 Sudut Dokumen Otomatis (Auto Edge Detection)
-   * Berbasis Computer Vision: Otsu Binarization, Connected Component Blob Analysis,
-   * Andrew's Monotone Chain Convex Hull, & Quad Optimization
+   * Deteksi 4 Sudut Dokumen Otomatis (Auto Edge Detection Pro)
+   * Berbasis Multi-Scale Color & Gradient Boundary Detection, Morphological Closing,
+   * Andrew's Convex Hull, dan Edge-Alignment Quadrilateral Scoring.
+   * Sangat andal membedakan kertas bahkan di atas meja kayu terang / lantai krem / background minim kontras.
    */
   static detectDocumentCorners(width, height, imageData) {
     const fallbackCorners = [
@@ -33,205 +34,188 @@ export class ScannerCore {
 
     try {
       const data = imageData.data;
-
-      // 1. Downscale ke resolusi analisis (~320px) agar kilat (< 20ms di HP)
-      const targetDim = 320;
+      const targetDim = 360;
       const scale = targetDim / Math.max(width, height);
       const aw = Math.max(10, Math.round(width * scale));
       const ah = Math.max(10, Math.round(height * scale));
+      const totalPixels = aw * ah;
 
-      const gray = new Uint8Array(aw * ah);
-      const hist = new Int32Array(256);
+      // 1. Downsample dan hitung Luminansi + Saluran Warna (RGB)
+      const lum = new Uint8Array(totalPixels);
+      const rChan = new Uint8Array(totalPixels);
+      const gChan = new Uint8Array(totalPixels);
+      const bChan = new Uint8Array(totalPixels);
 
       for (let y = 0; y < ah; y++) {
         const srcY = Math.min(height - 1, Math.floor(y / scale));
+        const row = y * aw;
         for (let x = 0; x < aw; x++) {
           const srcX = Math.min(width - 1, Math.floor(x / scale));
           const idx = (srcY * width + srcX) * 4;
-          const lum = Math.round(0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]);
-          gray[y * aw + x] = lum;
-          hist[lum]++;
+          const r = data[idx];
+          const g = data[idx + 1];
+          const b = data[idx + 2];
+          rChan[row + x] = r;
+          gChan[row + x] = g;
+          bChan[row + x] = b;
+          lum[row + x] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
         }
       }
 
-      // 2. Otsu's Thresholding untuk memisahkan kertas terang vs latar belakang meja
-      const totalPixels = aw * ah;
-      let sumAll = 0;
-      for (let t = 0; t < 256; t++) sumAll += t * hist[t];
-
-      let sumB = 0, wB = 0, wF = 0, varMax = 0, otsuThreshold = 128;
-      for (let t = 0; t < 256; t++) {
-        wB += hist[t];
-        if (wB === 0) continue;
-        wF = totalPixels - wB;
-        if (wF === 0) break;
-
-        sumB += t * hist[t];
-        const mB = sumB / wB;
-        const mF = (sumAll - sumB) / wF;
-        const varBetween = wB * wF * (mB - mF) * (mB - mF);
-        if (varBetween > varMax) {
-          varMax = varBetween;
-          otsuThreshold = t;
-        }
-      }
-
-      // 3. Binary Mask & Connected Component Analysis (BFS Blob Extraction)
-      const mask = new Uint8Array(aw * ah);
-      for (let i = 0; i < gray.length; i++) {
-        mask[i] = gray[i] >= otsuThreshold ? 1 : 0;
-      }
-
-      const visited = new Uint8Array(aw * ah);
-      let maxBlobSize = 0;
-      let maxBlobBorder = [];
-
+      // 2. Pre-filter 3x3 untuk meredam noise serat kertas dan teks di dalam dokumen
+      const bLum = new Uint8Array(totalPixels);
       for (let y = 1; y < ah - 1; y++) {
+        const row = y * aw;
         for (let x = 1; x < aw - 1; x++) {
+          let sum = 0;
+          for (let dy = -1; dy <= 1; dy++) {
+            const rOffset = (y + dy) * aw;
+            for (let dx = -1; dx <= 1; dx++) {
+              sum += lum[rOffset + (x + dx)];
+            }
+          }
+          bLum[row + x] = Math.round(sum / 9);
+        }
+      }
+
+      // 3. Multi-Channel Color & Luminance Gradient
+      // Mendeteksi batas fisik kertas walaupun berada di atas meja kayu terang / putih / lantai krem
+      const grad = new Float32Array(totalPixels);
+      let maxGrad = 0;
+      for (let y = 1; y < ah - 1; y++) {
+        const row = y * aw;
+        for (let x = 1; x < aw - 1; x++) {
+          const lIdx = row + (x - 1);
+          const rIdx = row + (x + 1);
+          const uIdx = (y - 1) * aw + x;
+          const dIdx = (y + 1) * aw + x;
+
+          // Gradien Luminansi
+          const dLx = bLum[rIdx] - bLum[lIdx];
+          const dLy = bLum[dIdx] - bLum[uIdx];
+
+          // Gradien Jarak Warna (Color Distance Gradient)
+          const dRx = rChan[rIdx] - rChan[lIdx];
+          const dGx = gChan[rIdx] - gChan[lIdx];
+          const dBx = bChan[rIdx] - bChan[lIdx];
+          const colGradX = Math.sqrt(dRx * dRx + dGx * dGx + dBx * dBx);
+
+          const dRy = rChan[dIdx] - rChan[uIdx];
+          const dGy = gChan[dIdx] - gChan[uIdx];
+          const dBy = bChan[dIdx] - bChan[uIdx];
+          const colGradY = Math.sqrt(dRy * dRy + dGy * dGy + dBy * dBy);
+
+          const gVal = Math.max(Math.abs(dLx) + Math.abs(dLy), (colGradX + colGradY) * 0.85);
+          grad[row + x] = gVal;
+          if (gVal > maxGrad) maxGrad = gVal;
+        }
+      }
+
+      if (maxGrad < 12) return fallbackCorners;
+
+      // 4. Adaptive Gradient Edge Thresholding (Canny-like percentile)
+      const gradHist = new Int32Array(128);
+      for (let i = 0; i < totalPixels; i++) {
+        const bin = Math.min(127, Math.floor((grad[i] / maxGrad) * 127));
+        gradHist[bin]++;
+      }
+      let acc = 0;
+      let p75 = 0;
+      for (let b = 127; b >= 0; b--) {
+        acc += gradHist[b];
+        if (acc >= totalPixels * 0.22) {
+          p75 = (b / 127) * maxGrad;
+          break;
+        }
+      }
+      const edgeThreshold = Math.max(14, p75);
+
+      // Binary Edge Mask & Morphological Dilate/Close untuk menyambung garis tepi terputus
+      const edgeMask = new Uint8Array(totalPixels);
+      for (let i = 0; i < totalPixels; i++) {
+        edgeMask[i] = grad[i] >= edgeThreshold ? 1 : 0;
+      }
+
+      const closedMask = new Uint8Array(totalPixels);
+      for (let y = 1; y < ah - 1; y++) {
+        const row = y * aw;
+        for (let x = 1; x < aw - 1; x++) {
+          if (edgeMask[row + x]) {
+            closedMask[row + x] = 1;
+            continue;
+          }
+          if (edgeMask[row - aw + x] || edgeMask[row + aw + x] || edgeMask[row + x - 1] || edgeMask[row + x + 1]) {
+            closedMask[row + x] = 1;
+          }
+        }
+      }
+
+      // 5. Ekstraksi Boundary Points dari Garis Tepi Terluar
+      const boundaryPoints = [];
+      const cx = aw / 2;
+      const cy = ah / 2;
+      const numRays = 72;
+      const maxRadius = Math.hypot(aw, ah) / 2;
+
+      for (let i = 0; i < numRays; i++) {
+        const rad = (i * 2 * Math.PI) / numRays;
+        const cosA = Math.cos(rad);
+        const sinA = Math.sin(rad);
+
+        let bestR = 0;
+        let peakG = 0;
+
+        for (let r = 18; r < maxRadius; r += 2) {
+          const rx = Math.round(cx + r * cosA);
+          const ry = Math.round(cy + r * sinA);
+          if (rx < 2 || rx >= aw - 2 || ry < 2 || ry >= ah - 2) break;
+
+          const idx = ry * aw + rx;
+          const gVal = grad[idx];
+          if (gVal > peakG && (gVal >= edgeThreshold || closedMask[idx] === 1)) {
+            peakG = gVal;
+            bestR = r;
+          }
+        }
+
+        if (bestR > 0) {
+          boundaryPoints.push({
+            x: (cx + bestR * cosA) / scale,
+            y: (cy + bestR * sinA) / scale
+          });
+        }
+      }
+
+      // Kumpulkan juga titik kontur tepi biner yang signifikan
+      for (let y = 4; y < ah - 4; y += 3) {
+        for (let x = 4; x < aw - 4; x += 3) {
           const idx = y * aw + x;
-          if (mask[idx] === 1 && !visited[idx]) {
-            const queue = [idx];
-            visited[idx] = 1;
-            const borderPts = [];
-
-            let head = 0;
-            while (head < queue.length) {
-              const curr = queue[head++];
-              const cy = Math.floor(curr / aw);
-              const cx = curr % aw;
-
-              // Titik batas tepi komponen (border pixel)
-              const isBorder = (
-                mask[(cy - 1) * aw + cx] === 0 ||
-                mask[(cy + 1) * aw + cx] === 0 ||
-                mask[cy * aw + (cx - 1)] === 0 ||
-                mask[cy * aw + (cx + 1)] === 0
-              );
-              if (isBorder) {
-                borderPts.push({ x: cx / scale, y: cy / scale });
-              }
-
-              // 4-Neighbors
-              const neighbors = [
-                (cy - 1) * aw + cx,
-                (cy + 1) * aw + cx,
-                cy * aw + (cx - 1),
-                cy * aw + (cx + 1)
-              ];
-
-              for (const n of neighbors) {
-                if (n >= 0 && n < aw * ah && mask[n] === 1 && !visited[n]) {
-                  visited[n] = 1;
-                  queue.push(n);
-                }
-              }
-            }
-
-            if (queue.length > maxBlobSize) {
-              maxBlobSize = queue.length;
-              maxBlobBorder = borderPts;
-            }
+          if (closedMask[idx] === 1 && grad[idx] > edgeThreshold * 1.2) {
+            boundaryPoints.push({
+              x: x / scale,
+              y: y / scale
+            });
           }
         }
       }
 
-      // Jika komponen dokumen terdeteksi minimal 10% dari layar
-      const blobAreaRatio = maxBlobSize / totalPixels;
-      if (blobAreaRatio >= 0.08 && maxBlobBorder.length >= 8) {
-        // 4. Convex Hull dari batas tepi dokumen terbesar
-        const hull = this.computeConvexHull(maxBlobBorder);
-        if (hull.length >= 4) {
-          // 5. Cari 4 Sudut Sejati yang memaksimalkan luas segi empat
-          const quad = this.findBestQuadrilateral(hull);
-          if (quad && quad.length === 4) {
-            return this.orderCornersClockwise(quad);
-          }
-        }
+      if (boundaryPoints.length < 8) return fallbackCorners;
+
+      // 6. Convex Hull
+      const hull = this.computeConvexHull(boundaryPoints);
+      if (hull.length < 4) return fallbackCorners;
+
+      // 7. Cari 4 Sudut Terbaik dengan Evaluasi Edge Alignment
+      const quad = this.findBestQuadrilateral(hull, grad, aw, ah, scale, width * height);
+      if (quad && quad.length === 4) {
+        return this.orderCornersClockwise(quad);
       }
 
-      // 4-Fallback ke Sobel Edge Gradient jika dokumen kontras rendah
-      return this.detectCornersBySobel(aw, ah, gray, scale, fallbackCorners);
-
+      return fallbackCorners;
     } catch (err) {
       console.warn("CV Auto-detection fallback:", err);
       return fallbackCorners;
     }
-  }
-
-  /**
-   * Fallback Sobel Edge Detection jika Otsu binarization ambigu
-   */
-  static detectCornersBySobel(aw, ah, gray, scale, fallbackCorners) {
-    const blurred = new Uint8Array(aw * ah);
-    for (let y = 2; y < ah - 2; y++) {
-      for (let x = 2; x < aw - 2; x++) {
-        let bSum = 0;
-        for (let dy = -2; dy <= 2; dy++) {
-          for (let dx = -2; dx <= 2; dx++) {
-            bSum += gray[(y + dy) * aw + (x + dx)];
-          }
-        }
-        blurred[y * aw + x] = Math.round(bSum / 25);
-      }
-    }
-
-    const grad = new Float32Array(aw * ah);
-    let maxGrad = 0;
-    for (let y = 1; y < ah - 1; y++) {
-      for (let x = 1; x < aw - 1; x++) {
-        const gx = -blurred[(y-1)*aw + (x-1)] + blurred[(y-1)*aw + (x+1)]
-                   - 2 * blurred[y*aw + (x-1)] + 2 * blurred[y*aw + (x+1)]
-                   - blurred[(y+1)*aw + (x-1)] + blurred[(y+1)*aw + (x+1)];
-        const gy = -blurred[(y-1)*aw + (x-1)] - 2 * blurred[(y-1)*aw + x] - blurred[(y-1)*aw + (x+1)]
-                   + blurred[(y+1)*aw + (x-1)] + 2 * blurred[(y+1)*aw + x] + blurred[(y+1)*aw + (x+1)];
-        const g = Math.abs(gx) + Math.abs(gy);
-        grad[y * aw + x] = g;
-        if (g > maxGrad) maxGrad = g;
-      }
-    }
-
-    if (maxGrad < 25) return fallbackCorners;
-
-    const boundaryPoints = [];
-    const gradThreshold = maxGrad * 0.28;
-    const cx = aw / 2;
-    const cy = ah / 2;
-    const numRays = 64;
-    const maxRadius = Math.hypot(aw, ah) / 2;
-
-    for (let i = 0; i < numRays; i++) {
-      const rad = (i * 2 * Math.PI) / numRays;
-      const cosA = Math.cos(rad);
-      const sinA = Math.sin(rad);
-
-      let bestR = 0;
-      let peakG = 0;
-
-      for (let r = 15; r < maxRadius; r += 2) {
-        const rx = Math.round(cx + r * cosA);
-        const ry = Math.round(cy + r * sinA);
-        if (rx < 2 || rx >= aw - 2 || ry < 2 || ry >= ah - 2) break;
-
-        const gVal = grad[ry * aw + rx];
-        if (gVal > peakG && gVal > gradThreshold) {
-          peakG = gVal;
-          bestR = r;
-        }
-      }
-
-      if (bestR > 0) {
-        boundaryPoints.push({
-          x: (cx + bestR * cosA) / scale,
-          y: (cy + bestR * sinA) / scale
-        });
-      }
-    }
-
-    if (boundaryPoints.length < 8) return fallbackCorners;
-    const hull = this.computeConvexHull(boundaryPoints);
-    if (hull.length < 4) return fallbackCorners;
-    const quad = this.findBestQuadrilateral(hull);
-    return this.orderCornersClockwise(quad);
   }
 
   /**
@@ -265,9 +249,54 @@ export class ScannerCore {
   }
 
   /**
-   * Mencari 4 sudut poligon terbaik yang memaksimalkan area segi empat
+   * Memeriksa apakah 4 titik membentuk segi empat cembung (Convex Quadrilateral)
    */
-  static findBestQuadrilateral(hull) {
+  static isConvexQuad(pts) {
+    let sign = 0;
+    for (let i = 0; i < 4; i++) {
+      const p1 = pts[i];
+      const p2 = pts[(i + 1) % 4];
+      const p3 = pts[(i + 2) % 4];
+      const cross = (p2.x - p1.x) * (p3.y - p2.y) - (p2.y - p1.y) * (p3.x - p2.x);
+      if (cross !== 0) {
+        if (sign === 0) sign = cross > 0 ? 1 : -1;
+        else if ((cross > 0 ? 1 : -1) !== sign) return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Menghitung skor kekuatan gradien di sepanjang 4 garis sisi quadrilateral
+   */
+  static computeQuadEdgeGradientScore(corners, grad, aw, ah, scale) {
+    if (!grad) return 1;
+    let sumGrad = 0;
+    let samples = 0;
+
+    for (let i = 0; i < 4; i++) {
+      const p1 = corners[i];
+      const p2 = corners[(i + 1) % 4];
+      const numSteps = 16;
+      for (let s = 0; s <= numSteps; s++) {
+        const t = s / numSteps;
+        const imgX = (p1.x + (p2.x - p1.x) * t) * scale;
+        const imgY = (p1.y + (p2.y - p1.y) * t) * scale;
+        const gx = Math.round(imgX);
+        const gy = Math.round(imgY);
+        if (gx >= 0 && gx < aw && gy >= 0 && gy < ah) {
+          sumGrad += grad[gy * aw + gx];
+          samples++;
+        }
+      }
+    }
+    return samples > 0 ? sumGrad / samples : 1;
+  }
+
+  /**
+   * Mencari 4 sudut poligon terbaik dengan kombinasi Area & Edge Alignment
+   */
+  static findBestQuadrilateral(hull, grad, aw, ah, scale, totalImageArea) {
     if (hull.length === 4) return hull;
 
     let tl = hull[0], tr = hull[0], br = hull[0], bl = hull[0];
@@ -283,24 +312,43 @@ export class ScannerCore {
       if (diff < minDiff) { minDiff = diff; bl = pt; }
     }
 
-    let bestQuad = [tl, tr, br, bl];
-    let maxArea = this.polygonArea(bestQuad);
+    const defaultQuad = [tl, tr, br, bl];
+    const candidates = [defaultQuad];
 
     const n = hull.length;
-    if (n <= 35) {
-      for (let i = 0; i < n - 3; i++) {
-        for (let j = i + 1; j < n - 2; j++) {
-          for (let k = j + 1; k < n - 1; k++) {
-            for (let l = k + 1; l < n; l++) {
-              const cand = [hull[i], hull[j], hull[k], hull[l]];
-              const a = this.polygonArea(cand);
-              if (a > maxArea) {
-                maxArea = a;
-                bestQuad = cand;
-              }
-            }
+    const step = n > 36 ? Math.ceil(n / 32) : 1;
+    const subHull = [];
+    for (let i = 0; i < n; i += step) subHull.push(hull[i]);
+
+    const m = subHull.length;
+    for (let i = 0; i < m - 3; i++) {
+      for (let j = i + 1; j < m - 2; j++) {
+        for (let k = j + 1; k < m - 1; k++) {
+          for (let l = k + 1; l < m; l++) {
+            candidates.push([subHull[i], subHull[j], subHull[k], subHull[l]]);
           }
         }
+      }
+    }
+
+    let bestQuad = defaultQuad;
+    let bestScore = -Infinity;
+
+    for (const cand of candidates) {
+      const ordered = this.orderCornersClockwise(cand);
+      const area = this.polygonArea(ordered);
+      const areaRatio = area / (totalImageArea || 1);
+
+      // Area dokumen wajar: antara 10% s/d 98% layar
+      if (areaRatio < 0.10 || areaRatio > 0.98) continue;
+      if (!this.isConvexQuad(ordered)) continue;
+
+      const edgeScore = this.computeQuadEdgeGradientScore(ordered, grad, aw, ah, scale);
+      const totalScore = Math.pow(areaRatio, 0.35) * edgeScore;
+
+      if (totalScore > bestScore) {
+        bestScore = totalScore;
+        bestQuad = ordered;
       }
     }
 
@@ -527,11 +575,14 @@ export class ScannerCore {
   }
 
   /**
-   * CamScanner Filter Suite:
-   * 1. Magic Color: Local Illumination Division (Shadow Eraser) + S-Curve + Stamp Color Retention
-   * 2. B&W: Bradley-Roth Local Adaptive Thresholding (Crisp Photocopier Text)
+   * CamScanner Pro Filter Suite:
+   * 1. Magic Color: Local Illumination Normalization + Continuous S-Curve Tone Mapping (Line-Preserving)
+   *    - Memutihkan kertas tanpa menghilangkan garis tabel dan garis buku tulis tipis
+   *    - Menjaga saturasi stempel merah/biru dan tanda tangan pulpen
+   * 2. B&W: Bradley-Roth Adaptive Thresholding dengan sensitivitas tinggi untuk garis tabel & teks
    * 3. Grayscale: Normalized Gray Tone
    * 4. Original: Raw capture with contrast tuning
+   * 5. Text & Line Sharpening: Laplacian Unsharp Mask
    */
   static applyDocumentFilter(canvas, filterType = 'magic', brightness = 0, contrast = 0) {
     const width = canvas.width;
@@ -551,87 +602,114 @@ export class ScannerCore {
     const data = imgData.data;
 
     // -------------------------------------------------------------------------
-    // A. MAGIC COLOR (Teknologi Inti CamScanner: Background Division Shadow Eraser)
+    // A. MAGIC COLOR (CamScanner Pro: Continuous Tone Curve & Table Line Preservation)
     // -------------------------------------------------------------------------
     if (filterType === 'magic') {
-      const bgScale = 16;
-      const bw = Math.max(8, Math.floor(width / bgScale));
-      const bh = Math.max(8, Math.floor(height / bgScale));
-      const bgLum = new Float32Array(bw * bh);
+      // 1. Peta Pencahayaan Kertas Lokal (Local Paper Background Estimation)
+      // Menggunakan sampling lokal untuk mendeteksi kecerahan kertas asli
+      // tanpa menganggap garis tabel atau garis buku tulis sebagai bayangan
+      const step = 24;
+      const gw = Math.ceil(width / step);
+      const gh = Math.ceil(height / step);
+      const bgGrid = new Float32Array(gw * gh);
 
-      for (let by = 0; by < bh; by++) {
-        const sy = Math.min(height - 1, by * bgScale);
-        for (let bx = 0; bx < bw; bx++) {
-          const sx = Math.min(width - 1, bx * bgScale);
-          const i = (sy * width + sx) * 4;
-          bgLum[by * bw + bx] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      for (let gy = 0; gy < gh; gy++) {
+        const yStart = gy * step;
+        const yEnd = Math.min(height, yStart + step);
+        for (let gx = 0; gx < gw; gx++) {
+          const xStart = gx * step;
+          const xEnd = Math.min(width, xStart + step);
+
+          let maxLum = 0;
+          for (let y = yStart; y < yEnd; y += 2) {
+            const row = y * width;
+            for (let x = xStart; x < xEnd; x += 2) {
+              const i = (row + x) * 4;
+              const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+              if (lum > maxLum) maxLum = lum;
+            }
+          }
+          bgGrid[gy * gw + gx] = Math.max(35, maxLum);
         }
       }
 
-      // Blur peta pencahayaan untuk mendapatkan ambang terang latar belakang lokal
-      const blurredBg = new Float32Array(bw * bh);
-      for (let by = 0; by < bh; by++) {
-        for (let bx = 0; bx < bw; bx++) {
+      // Smooth background illumination grid dengan 2-pass box blur
+      const smoothGrid = new Float32Array(gw * gh);
+      for (let gy = 0; gy < gh; gy++) {
+        for (let gx = 0; gx < gw; gx++) {
           let sum = 0, count = 0;
           for (let dy = -2; dy <= 2; dy++) {
-            const ny = by + dy;
-            if (ny < 0 || ny >= bh) continue;
+            const ny = gy + dy;
+            if (ny < 0 || ny >= gh) continue;
             for (let dx = -2; dx <= 2; dx++) {
-              const nx = bx + dx;
-              if (nx < 0 || nx >= bw) continue;
-              sum += bgLum[ny * bw + nx];
+              const nx = gx + dx;
+              if (nx < 0 || nx >= gw) continue;
+              sum += bgGrid[ny * gw + nx];
               count++;
             }
           }
-          blurredBg[by * bw + bx] = sum / count;
+          smoothGrid[gy * gw + gx] = sum / count;
         }
       }
 
-      // Terapkan pembagian latar belakang (Background Division) & S-Curve
+      // 2. Normalisasi & Continuous S-Curve Tone Mapping
       for (let y = 0; y < height; y++) {
-        const by = Math.min(bh - 1, Math.floor(y / bgScale));
-        const rowOffset = y * width;
+        const gy = Math.min(gh - 1, Math.floor(y / step));
+        const row = y * width;
         for (let x = 0; x < width; x++) {
-          const bx = Math.min(bw - 1, Math.floor(x / bgScale));
-          const localBg = Math.max(30, blurredBg[by * bw + bx]);
+          const gx = Math.min(gw - 1, Math.floor(x / step));
+          const localBg = Math.max(30, smoothGrid[gy * gw + gx]);
+          const normFactor = 245 / localBg;
 
-          const idx = (rowOffset + x) * 4;
-          let r = data[idx];
-          let g = data[idx + 1];
-          let b = data[idx + 2];
+          const idx = (row + x) * 4;
+          const r = data[idx];
+          const g = data[idx + 1];
+          const b = data[idx + 2];
 
-          // Eliminasi bayangan gelap dengan normalisasi terhadap kecerahan lokal
-          let normR = Math.min(255, (r / localBg) * 242);
-          let normG = Math.min(255, (g / localBg) * 242);
-          let normB = Math.min(255, (b / localBg) * 242);
+          // Hilangkan bayangan dengan normalisasi terhadap latar lokal
+          let normR = Math.min(255, r * normFactor);
+          let normG = Math.min(255, g * normFactor);
+          let normB = Math.min(255, b * normFactor);
 
-          const lum = 0.299 * normR + 0.587 * normG + 0.114 * normB;
+          const normLum = 0.299 * normR + 0.587 * normG + 0.114 * normB;
 
-          // Deteksi Saturasi Warna (Stempel Merah/Biru, Tanda Tangan, Logo)
+          // Deteksi saturasi warna (stempel merah/biru, pulpen, logo, garis buku biru)
           const maxC = Math.max(r, g, b);
           const minC = Math.min(r, g, b);
           const sat = maxC - minC;
 
-          if (sat > 28) {
-            const satBoost = 1.35;
-            normR = Math.min(255, Math.max(0, lum + (normR - lum) * satBoost));
-            normG = Math.min(255, Math.max(0, lum + (normG - lum) * satBoost));
-            normB = Math.min(255, Math.max(0, lum + (normB - lum) * satBoost));
+          // Target Luminance dengan Sigmoid S-Curve Halus (Mencegah garis tabel/buku hilang)
+          let targetLum;
+          const paperWhite = 224;
+          const inkBlack = 85;
+
+          if (normLum >= paperWhite) {
+            targetLum = 255;
+          } else if (normLum <= inkBlack) {
+            targetLum = Math.max(0, normLum * 0.52);
           } else {
-            if (lum < 140) {
-              normR *= 0.65;
-              normG *= 0.65;
-              normB *= 0.65;
-            } else if (lum > 165) {
-              normR = 255;
-              normG = 255;
-              normB = 255;
-            }
+            // Mid-tones: Garis tabel, kotak formulir, garis buku tulis bergaris
+            // Menggunakan kurva kontinu (continuous curve) agar garis abu-abu tetap terlihat tajam!
+            const u = (normLum - inkBlack) / (paperWhite - inkBlack);
+            targetLum = (inkBlack * 0.52) + (paperWhite - inkBlack * 0.52) * Math.pow(u, 1.28);
           }
 
-          data[idx] = Math.min(255, Math.max(0, normR));
-          data[idx + 1] = Math.min(255, Math.max(0, normG));
-          data[idx + 2] = Math.min(255, Math.max(0, normB));
+          if (sat > 16) {
+            // Tinta Berwarna: Pulpen biru, stempel merah, spidol, garis buku biru
+            const satBoost = 1.30;
+            normR = Math.min(255, Math.max(0, targetLum + (normR - normLum) * satBoost));
+            normG = Math.min(255, Math.max(0, targetLum + (normG - normLum) * satBoost));
+            normB = Math.min(255, Math.max(0, targetLum + (normB - normLum) * satBoost));
+          } else {
+            // Tinta Netral: Teks dan garis tabel hitam/abu-abu
+            normR = targetLum;
+            normG = targetLum;
+            normB = targetLum;
+          }
+
+          data[idx] = Math.min(255, Math.max(0, Math.round(normR)));
+          data[idx + 1] = Math.min(255, Math.max(0, Math.round(normG)));
+          data[idx + 2] = Math.min(255, Math.max(0, Math.round(normB)));
         }
       }
     }
@@ -658,9 +736,10 @@ export class ScannerCore {
         }
       }
 
-      const s = Math.max(12, Math.floor(width / 16));
+      const s = Math.max(12, Math.floor(width / 18));
       const s2 = Math.floor(s / 2);
-      const T = 0.14;
+      // Sensitivitas T = 0.08 agar garis tabel tipis dan arsiran buku tulis ikut tertangkap
+      const T = 0.08;
 
       for (let y = 0; y < height; y++) {
         const y1 = Math.max(0, y - s2);
@@ -715,11 +794,11 @@ export class ScannerCore {
     }
 
     // -------------------------------------------------------------------------
-    // E. TEXT SHARPENING PASS (Laplacian Unsharp Mask)
-    // Menajamkan guratan huruf, angka kecil, stempel, dan tanda tangan agar jernih dibaca
+    // E. TEXT & LINE SHARPENING PASS (Laplacian Unsharp Mask)
+    // Menajamkan guratan huruf, garis tabel, angka kecil, stempel, dan tanda tangan
     // -------------------------------------------------------------------------
     if (filterType === 'magic' || filterType === 'bw' || filterType === 'grayscale') {
-      const sharpenAlpha = 0.40;
+      const sharpenAlpha = 0.45;
       const copy = new Uint8ClampedArray(data);
 
       for (let y = 1; y < height - 1; y++) {
@@ -728,8 +807,8 @@ export class ScannerCore {
           const idx = (row + x) * 4;
           const lum = 0.299 * copy[idx] + 0.587 * copy[idx + 1] + 0.114 * copy[idx + 2];
 
-          // Hanya tajamkan area teks/tinta dan batas kontras (bukan background putih polos)
-          if (lum < 235) {
+          // Tajamkan area teks/tinta dan garis tabel (bukan background putih polos)
+          if (lum < 238) {
             for (let c = 0; c < 3; c++) {
               const val = copy[idx + c];
               const up = copy[idx - width * 4 + c];

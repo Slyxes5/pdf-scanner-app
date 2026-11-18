@@ -237,20 +237,49 @@ function renderCropCanvas() {
   cropCtx.stroke();
   cropCtx.shadowBlur = 0;
 
-  // Gambar Titik Sudut (Pin Handles)
+  // Gambar Titik Sudut Presisi (CamScanner-Style Hollow Precision Target Ring)
   pts.forEach((pt, i) => {
+    const isDragging = (state.dragCornerIdx === i);
+    const radius = isDragging ? 11 : 8.5;
+
+    // Dark outer halo ring agar sudut selalu kontras di atas kertas putih maupun meja gelap
     cropCtx.beginPath();
-    cropCtx.arc(pt.x, pt.y, 16, 0, Math.PI * 2);
+    cropCtx.arc(pt.x, pt.y, radius + 1.5, 0, Math.PI * 2);
+    cropCtx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
+    cropCtx.lineWidth = 3.5;
+    cropCtx.stroke();
+
+    // Cincin Presisi Berongga Neon Volt
+    cropCtx.beginPath();
+    cropCtx.arc(pt.x, pt.y, radius, 0, Math.PI * 2);
+    cropCtx.strokeStyle = '#d4fb38';
+    cropCtx.lineWidth = 2;
+    // Berongga transparan agar sudut dokumen di bawahnya terlihat jelas
+    cropCtx.fillStyle = isDragging ? 'rgba(212, 251, 56, 0.35)' : 'rgba(212, 251, 56, 0.12)';
+    cropCtx.fill();
+    cropCtx.stroke();
+
+    // Titik pusat mikro (Micro Target Pip)
+    cropCtx.beginPath();
+    cropCtx.arc(pt.x, pt.y, 1.8, 0, Math.PI * 2);
     cropCtx.fillStyle = '#d4fb38';
-    cropCtx.shadowColor = 'rgba(0, 0, 0, 0.7)';
-    cropCtx.shadowBlur = 8;
     cropCtx.fill();
 
-    cropCtx.beginPath();
-    cropCtx.arc(pt.x, pt.y, 6, 0, Math.PI * 2);
-    cropCtx.fillStyle = '#080a0f';
-    cropCtx.fill();
-    cropCtx.shadowBlur = 0;
+    // Hairline crosshair halus memanjang keluar cincin saat aktif digeser
+    if (isDragging) {
+      cropCtx.beginPath();
+      cropCtx.moveTo(pt.x - radius - 5, pt.y);
+      cropCtx.lineTo(pt.x - radius + 2, pt.y);
+      cropCtx.moveTo(pt.x + radius - 2, pt.y);
+      cropCtx.lineTo(pt.x + radius + 5, pt.y);
+      cropCtx.moveTo(pt.x, pt.y - radius - 5);
+      cropCtx.lineTo(pt.x, pt.y - radius + 2);
+      cropCtx.moveTo(pt.x, pt.y + radius - 2);
+      cropCtx.lineTo(pt.x, pt.y + radius + 5);
+      cropCtx.strokeStyle = '#d4fb38';
+      cropCtx.lineWidth = 1.5;
+      cropCtx.stroke();
+    }
   });
 }
 
@@ -356,34 +385,89 @@ function showLoupe(canvasPos) {
   const loupeEl = document.getElementById('loupeContainer');
   loupeEl.style.display = 'block';
 
-  // Posisi loupe melayang di atas jari
-  const cx = canvasPos.x;
-  const cy = Math.max(10, canvasPos.y - 120);
-  loupeEl.style.left = `${cx - 55}px`;
-  loupeEl.style.top = `${cy}px`;
+  // Smart Adaptive Positioning: Hindari tertutup jempol dan cegah terpotong di tepi layar
+  const containerW = cropCanvas.width || window.innerWidth;
+  const lRadius = 70; // 140px / 2
+  const clampedX = Math.max(lRadius + 10, Math.min(containerW - lRadius - 10, canvasPos.x));
+  loupeEl.style.left = `${clampedX}px`;
 
-  // Render perbesaran 2.5x di canvas loupe
-  const lSize = 110;
-  loupeCanvas.width = lSize;
-  loupeCanvas.height = lSize;
+  // Jika jari berada di bagian atas layar, loupe otomatis muncul di bawah jari
+  if (canvasPos.y < 165) {
+    loupeEl.style.transform = 'translate(-50%, 30px)';
+    loupeEl.style.top = `${canvasPos.y}px`;
+  } else {
+    loupeEl.style.transform = 'translate(-50%, -125%)';
+    loupeEl.style.top = `${canvasPos.y}px`;
+  }
 
-  const zoom = 2.5;
-  const srcW = lSize / zoom;
-  const srcH = lSize / zoom;
+  // Render perbesaran tajam High-DPI Retina (3.2x Zoom)
+  const lDisplaySize = 140;
+  const dpr = Math.min(3, window.devicePixelRatio || 2);
+  const targetPx = Math.round(lDisplaySize * dpr);
 
-  loupeCtx.clearRect(0, 0, lSize, lSize);
+  if (loupeCanvas.width !== targetPx || loupeCanvas.height !== targetPx) {
+    loupeCanvas.width = targetPx;
+    loupeCanvas.height = targetPx;
+  }
+
+  loupeCtx.save();
+  loupeCtx.setTransform(1, 0, 0, 1, 0, 0);
+  loupeCtx.clearRect(0, 0, targetPx, targetPx);
+  loupeCtx.scale(dpr, dpr);
+
+  loupeCtx.imageSmoothingEnabled = true;
+  loupeCtx.imageSmoothingQuality = 'high';
+
+  const zoom = 3.2;
+  const srcW = lDisplaySize / zoom;
+  const srcH = lDisplaySize / zoom;
+
   loupeCtx.drawImage(
     state.workingCanvas,
     corner.x - srcW / 2, corner.y - srcH / 2, srcW, srcH,
-    0, 0, lSize, lSize
+    0, 0, lDisplaySize, lDisplaySize
   );
 
-  // Crosshair bidik
-  loupeCtx.strokeStyle = '#d4fb38';
-  loupeCtx.lineWidth = 2;
+  // Sniper Hairline Crosshair
+  const mid = lDisplaySize / 2;
+
+  // Outer target ring
   loupeCtx.beginPath();
-  loupeCtx.arc(lSize / 2, lSize / 2, 8, 0, Math.PI * 2);
+  loupeCtx.arc(mid, mid, 16, 0, Math.PI * 2);
+  loupeCtx.strokeStyle = 'rgba(212, 251, 56, 0.45)';
+  loupeCtx.lineWidth = 1;
   loupeCtx.stroke();
+
+  // Dark shadow for hairlines (visible on pure white paper)
+  loupeCtx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+  loupeCtx.lineWidth = 3;
+  loupeCtx.beginPath();
+  loupeCtx.moveTo(mid - 32, mid); loupeCtx.lineTo(mid - 6, mid);
+  loupeCtx.moveTo(mid + 6, mid); loupeCtx.lineTo(mid + 32, mid);
+  loupeCtx.moveTo(mid, mid - 32); loupeCtx.lineTo(mid, mid - 6);
+  loupeCtx.moveTo(mid, mid + 6); loupeCtx.lineTo(mid, mid + 32);
+  loupeCtx.stroke();
+
+  // Foreground neon hairline
+  loupeCtx.strokeStyle = '#d4fb38';
+  loupeCtx.lineWidth = 1.5;
+  loupeCtx.beginPath();
+  loupeCtx.moveTo(mid - 32, mid); loupeCtx.lineTo(mid - 6, mid);
+  loupeCtx.moveTo(mid + 6, mid); loupeCtx.lineTo(mid + 32, mid);
+  loupeCtx.moveTo(mid, mid - 32); loupeCtx.lineTo(mid, mid - 6);
+  loupeCtx.moveTo(mid, mid + 6); loupeCtx.lineTo(mid, mid + 32);
+  loupeCtx.stroke();
+
+  // Center micro pip
+  loupeCtx.beginPath();
+  loupeCtx.arc(mid, mid, 2, 0, Math.PI * 2);
+  loupeCtx.fillStyle = '#d4fb38';
+  loupeCtx.fill();
+  loupeCtx.strokeStyle = '#080a0f';
+  loupeCtx.lineWidth = 1;
+  loupeCtx.stroke();
+
+  loupeCtx.restore();
 }
 
 function hideLoupe() {
